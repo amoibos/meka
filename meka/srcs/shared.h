@@ -18,7 +18,7 @@
 #define MEKA_VERSION_HIGH       (0)
 #define MEKA_VERSION_LOW        (80)
 #define MEKA_NAME_VERSION       MEKA_NAME " " MEKA_VERSION
-#define MEKA_HOMEPAGE           "http://www.smspower.org/meka"
+#define MEKA_HOMEPAGE           "https://www.smspower.org/meka"
 #define MEKA_AUTHORS            "Omar Cornut (Bock), Marat Fayzullin, Mitsutaka Okazaki, Maxim & more contributors"
 #define MEKA_AUTHORS_SHORT      "Omar Cornut and MEKA team"
 #define MEKA_DATE               "1998-2025"
