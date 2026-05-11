@@ -15,6 +15,7 @@
 #include "palette.h"
 #include "sf7000.h"
 #include "sg1ksc3k.h"
+#include "sk1100.h"
 #include "vdp.h"
 #include "video.h"
 #include "vmachine.h"
