@@ -204,6 +204,9 @@ void    Machine_Set_Handler_MemRW()
     case MAPPER_MSX_Generic16_8000:
         WrZ80 = Write_Mapper_MSX_Generic16_8000;
         break;
+    case MAPPER_SD1000:                  // SD-1000 multicart: full 64KB, Sega-style bankswitching
+        WrZ80 = Write_Mapper_SD1000;
+        break;
     }
 
     // Save the original handlers as "NoHook" versions
@@ -225,8 +228,10 @@ void        Machine_Set_Mapper()
     case DRV_SC3000:
         if (tsms.Size_ROM <= 32*1024)
             g_machine.mapper = MAPPER_32kRAM;       // FIXME: Not technically correct. Should be enabled for BASIC.
-        else
+        else if (tsms.Size_ROM <= 48*1024)
             g_machine.mapper = MAPPER_SG1000;
+        else
+            g_machine.mapper = MAPPER_SD1000;
         if (DB.current_entry == NULL && tsms.Size_ROM >= 0x200000)
             if (memcmp(ROM+0x1F8004, "SC-3000 SURVIVORS MULTICART BOOT MENU", 38) == 0)
                 g_machine.mapper = MAPPER_SC3000_Survivors_Multicart;
@@ -235,7 +240,10 @@ void        Machine_Set_Mapper()
         g_machine.mapper = MAPPER_ColecoVision;
         return;
     case DRV_SG1000:
-        g_machine.mapper = MAPPER_SG1000;
+        if (tsms.Size_ROM <= 48*1024)
+            g_machine.mapper = MAPPER_SG1000;
+        else
+            g_machine.mapper = MAPPER_SD1000;
         return;
     case DRV_SF7000:
         g_machine.mapper = MAPPER_SF7000;
@@ -539,6 +547,28 @@ void    Machine_Set_Mapping()
         Map_8k_RAM(6, 2);
         Map_8k_RAM(7, 3);
         Out_SMS(0xE0, g_machine.mapper_regs[0]);
+        break;
+
+    case MAPPER_SD1000: // SD-1000 multicart: full 64KB ROM, Sega-style bankswitching ------
+        // Pages 0-5: ROM (bank-switchable via 0xFFFD-0xFFFF)
+        // Pages 6-7: RAM-backed (RAM[0x0000-0x3FFF]), initialized from ROM if ROM > 48KB
+        Map_8k_ROM(0, 0);
+        Map_8k_ROM(1, 1 & tsms.Pages_Mask_8k);
+        Map_8k_ROM(2, 2 & tsms.Pages_Mask_8k);
+        Map_8k_ROM(3, 3 & tsms.Pages_Mask_8k);
+        Map_8k_ROM(4, 4 & tsms.Pages_Mask_8k);
+        Map_8k_ROM(5, 5 & tsms.Pages_Mask_8k);
+        Map_8k_RAM(6, 0);   // 0xC000-0xDFFF -> RAM[0x0000-0x1FFF]
+        Map_8k_RAM(7, 1);   // 0xE000-0xFFFF -> RAM[0x2000-0x3FFF]
+        // Initialize RAM pages from ROM content (pages 6 and 7 of the ROM image)
+        memcpy(RAM + 0x0000, ROM + (6 & tsms.Pages_Mask_8k) * 0x2000, 0x2000);
+        memcpy(RAM + 0x2000, ROM + (7 & tsms.Pages_Mask_8k) * 0x2000, 0x2000);
+        g_machine.mapper_regs_count = 4;
+        g_machine.mapper_regs[0] = 0;   // Frame 0 = 16KB page 0
+        g_machine.mapper_regs[1] = 1;   // Frame 1 = 16KB page 1
+        g_machine.mapper_regs[2] = 2;   // Frame 2 = 16KB page 2
+        g_machine.mapper_regs[3] = 3;   // Frame 3 = 16KB page 3 (0xC000-0xFFFF)
+        memcpy(Game_ROM_Computed_Page_0, ROM, 0x4000);
         break;
 
     default: // Other mappers

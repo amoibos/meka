@@ -102,6 +102,13 @@ void        Load_Game_Fixup()
             b = RAM[0x1FFF]; WrZ80_NoHook(0xFFFF, g_machine.mapper_regs[2]);     RAM[0x1FFF] = b;
             memcpy (RAM + 0x1000, RAM, 0x1000);
             break;
+        case MAPPER_SD1000:
+            // Restore ROM page mappings for frames 0-2. Don't replay 0xFFFC here:
+            // the save state already contains the correct RAM content for 0xC000-0xFFFF.
+            b = RAM[0x1FFD]; WrZ80_NoHook(0xFFFD, g_machine.mapper_regs[0]);     RAM[0x1FFD] = b;
+            b = RAM[0x1FFE]; WrZ80_NoHook(0xFFFE, g_machine.mapper_regs[1]);     RAM[0x1FFE] = b;
+            b = RAM[0x1FFF]; WrZ80_NoHook(0xFFFF, g_machine.mapper_regs[2]);     RAM[0x1FFF] = b;
+            break;
         case MAPPER_SF7000:
             SF7000_IPL_Mapping_Update();
             break;

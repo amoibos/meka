@@ -107,6 +107,7 @@ void    Mapper_Get_RAM_Infos(int *plen, int *pstart_addr)
         case MAPPER_SMS_DisplayUnit:                len = 0x02800; start_addr = 0x4000; break; // FIXME: Incorrect, due to scattered mapping!
         case MAPPER_SG1000_Taiwan_MSX_Adapter_TypeA:len = 0x02000+0x800; start_addr = 0x2000; break; // FIXME: Two memory regions
         case MAPPER_SC3000_Survivors_Multicart:     len = 0x08000; start_addr = 0x8000; break;
+        case MAPPER_SD1000:                         len = 0x04000; start_addr = 0xC000; break;
         // FIXME: ActionReplay!!
         // default, Codemaster, Korean..
         default:                                len = 0x02000; start_addr = 0xC000; break;
@@ -366,6 +367,78 @@ WRITE_FUNC (Write_Mapper_SG1000)
     }
 
     Write_Error (Addr, Value);
+}
+
+// [MAPPER: SD-1000] WRITE BYTE ------------------------------------------------
+// Full 64KB ROM support for SG-1000/SC-3000. Sega-style 16KB bankswitching:
+//   0xFFFC = Frame 3 (0xC000-0xFFFF): copies selected ROM page into RAM pages 6+7
+//   0xFFFD = Frame 0 (0x0000-0x3FFF)
+//   0xFFFE = Frame 1 (0x4000-0x7FFF)
+//   0xFFFF = Frame 2 (0x8000-0xBFFF)
+// RAM at 0xC000-0xFFFF is backed by RAM[0x0000-0x3FFF] without mirroring.
+WRITE_FUNC (Write_Mapper_SD1000)
+{
+    switch (Addr)
+    {
+    case 0xFFFC: // Frame 3 (0xC000-0xFFFF) ------------------------------------
+    {
+        Value &= tsms.Pages_Mask_16k;
+        if (g_machine.mapper_regs[3] != Value)
+        {
+            g_machine.mapper_regs[3] = Value;
+            const int page_lo = (Value * 2)     & tsms.Pages_Mask_8k;
+            const int page_hi = (Value * 2 + 1) & tsms.Pages_Mask_8k;
+            memcpy(RAM + 0x0000, ROM + page_lo * 0x2000, 0x2000);
+            memcpy(RAM + 0x2000, ROM + page_hi * 0x2000, 0x2000);
+        }
+        return;
+    }
+    case 0xFFFD: // Frame 0 (0x0000-0x3FFF) ------------------------------------
+#ifdef DEBUG_PAGES
+        if (Value != 0)
+        { Msg(MSGT_DEBUG, "At PC=%04X: Frame 0 set to page %d !", CPU_GetPC, Value); }
+#endif
+        Value &= tsms.Pages_Mask_16k;
+        if (g_machine.mapper_regs[0] != Value)
+        {
+            RAM[0x1FFD] = g_machine.mapper_regs[0] = Value;
+            if (Value != 0)
+            {
+                Map_16k_Other(0, Game_ROM_Computed_Page_0);
+                memcpy(Game_ROM_Computed_Page_0 + 0x400, ROM + (Value << 14) + 0x400, 0x3C00);
+            }
+            else
+            {
+                Map_16k_ROM(0, 0);
+            }
+        }
+        return;
+    case 0xFFFE: // Frame 1 (0x4000-0x7FFF) ------------------------------------
+#ifdef DEBUG_PAGES
+        if (Value > tsms.Pages_Count_16k)
+        { Msg(MSGT_DEBUG, "At PC=%04X: Frame 1 set to non-existent page: %d", CPU_GetPC, Value); }
+#endif
+        RAM[0x1FFE] = g_machine.mapper_regs[1] = Value & tsms.Pages_Mask_16k;
+        Map_16k_ROM(2, g_machine.mapper_regs[1] * 2);
+        return;
+    case 0xFFFF: // Frame 2 (0x8000-0xBFFF) ------------------------------------
+#ifdef DEBUG_PAGES
+        if (Value > tsms.Pages_Count_16k)
+        { Msg(MSGT_DEBUG, "At PC=%04X: Frame 2 set to non-existent page: %d", CPU_GetPC, Value); }
+#endif
+        RAM[0x1FFF] = g_machine.mapper_regs[2] = Value & tsms.Pages_Mask_16k;
+        Map_16k_ROM(4, g_machine.mapper_regs[2] * 2);
+        return;
+    }
+
+    // RAM at 0xC000-0xFFFF (no mirroring, full 8KB per page) ------------------
+    switch (Addr >> 13)
+    {
+    case 6: Mem_Pages[6][Addr] = Value; return;
+    case 7: Mem_Pages[7][Addr] = Value; return;
+    }
+
+    Write_Error(Addr, Value);
 }
 
 WRITE_FUNC (Write_Mapper_SG1000_Taiwan_MSX_Adapter_TypeA)
