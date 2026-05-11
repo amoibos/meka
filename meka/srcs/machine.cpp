@@ -652,6 +652,10 @@ void        Machine_Reset()
     // Set driver & machine stuff
     drv_set (g_machine.driver_id);
 
+    // Auto-enable SK-1100 keyboard when loading SC-3000 files
+    if (g_driver->id == DRV_SC3000 && !Inputs.SK1100_Enabled)
+        SK1100_Switch();
+
     Machine_Set_Mapper         ();
     if ((g_machine_flags & MACHINE_RUN) != 0 /*== MACHINE_RUN */)
         Machine_Set_Mapping    (); // ^^ FIXME: the test above isn't beautiful since MACHINE_RUN contains multiple flags, but I'm unsure which of them is actually needed to perform the correct test
