@@ -162,6 +162,10 @@ struct t_debugger
     size_t                      pc_detail_log_count;
     bool                        pc_detail_log_show_extra_registers;
     int                         trackback_scroll_offset;        // Mouse wheel to scroll disassembly
+
+    // Debug script
+    std::vector<std::string>    script_commands;
+    size_t                      script_command_index;
 };
 
 extern t_debugger   Debugger;
@@ -183,6 +187,7 @@ void                        Debugger_Update(void);
 void                        Debugger_Switch(void);
 void                        Debugger_Printf(const char *format, ...);
 void                        Debugger_InputParseCommand(char* line);
+void                        Debugger_Script_Load(const char* filename);
 
 // Symbols
 bool                        Debugger_Symbols_Load();

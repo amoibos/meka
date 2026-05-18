@@ -491,6 +491,9 @@ void        Debugger_Init_Values()
 
     Debugger.trackback_scroll_offset = 0;
 
+    Debugger.script_commands.clear();
+    Debugger.script_command_index = 0;
+
     // Add Z80 CPU registers variables
     Debugger.variables_cpu_registers = NULL;
     {
@@ -661,6 +664,18 @@ void    Debugger_Update()
 
     // Reset watch counter
     Debugger.watch_counter = 0;
+
+    // Process pending debug script commands when machine is halted at a breakpoint
+    if (Debugger.script_command_index < Debugger.script_commands.size()
+        && (g_machine_flags & MACHINE_DEBUGGING))
+    {
+        const std::string& cmd_str = Debugger.script_commands[Debugger.script_command_index++];
+        char buf[512];
+        strncpy(buf, cmd_str.c_str(), sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+        Debugger_Printf("$ %s\n", buf);
+        Debugger_InputParseCommand(buf);
+    }
 }
 
 void    Debugger_Applet_UpdateShortcuts()
@@ -3643,6 +3658,13 @@ void        Debugger_InputParseCommand(char* line)
         return;
     }
 
+    // Q - QUIT
+    if (!strcmp(cmd, "Q") || !strcmp(cmd, "QUIT") || !strcmp(cmd, "EXIT"))
+    {
+        opt.Force_Quit = true;
+        return;
+    }
+
     // Unknown command
     Debugger_Printf("Syntax error!\n");
 }
@@ -4654,6 +4676,35 @@ void        Debugger_ReverseMap(u16 addr)
         Debugger_Printf(" Z80 $%04X = SRAM $%04X", addr, offset);
 
     //break;
+}
+
+//-----------------------------------------------------------------------------
+
+void    Debugger_Script_Load(const char* filename)
+{
+    FILE* f = fopen(filename, "r");
+    if (!f)
+    {
+        Debugger_Printf("Script: cannot open '%s'\n", filename);
+        return;
+    }
+    char line[512];
+    int count = 0;
+    while (fgets(line, sizeof(line), f))
+    {
+        // Strip trailing newline/carriage-return
+        for (char* p = line + strlen(line) - 1; p >= line && (*p == '\n' || *p == '\r'); p--)
+            *p = '\0';
+        // Skip leading whitespace to find content start
+        char* p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        // Skip comment lines and blank lines
+        if (*p == '#' || *p == '\0') continue;
+        Debugger.script_commands.push_back(p);
+        count++;
+    }
+    fclose(f);
+    Debugger_Printf("Script: loaded %d command(s) from '%s'\n", count, filename);
 }
 
 //-----------------------------------------------------------------------------

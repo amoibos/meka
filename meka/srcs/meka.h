@@ -242,6 +242,7 @@ struct t_meka_env
 
     t_meka_state        state;
     bool                debug_dump_infos;
+    char*               debug_script_filename;
 };
 
 extern t_meka_env  g_env;

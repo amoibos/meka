@@ -19,6 +19,7 @@
 #define _STATIC_CPPLIB
 #define _DISABLE_DEPRECATE_STATIC_CPPLIB
 #include <vector>
+#include <string>
 #include <map>
 #include <algorithm>
 

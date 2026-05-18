@@ -139,6 +139,7 @@ static void Init_LookUpTables()
 static void Init_Default_Values()
 {
     g_env.debug_dump_infos = false;
+    g_env.debug_script_filename = NULL;
 
     // IPeriod
     opt.IPeriod = opt.Cur_IPeriod = 228;
@@ -410,6 +411,10 @@ int main(int argc, char **argv)
         Configuration_Save();
 
     // Setup display (fullscreen/GUI)
+    #ifdef MEKA_Z80_DEBUGGER
+    if (g_env.debug_script_filename)
+        g_config.start_in_gui = true; // script execution needs GUI mode for Debugger_Update()
+    #endif
     if ((g_machine_flags & MACHINE_RUN) == MACHINE_RUN && !g_config.start_in_gui)
         g_env.state = MEKA_STATE_GAME;
     else
@@ -422,6 +427,16 @@ int main(int argc, char **argv)
 
     // Load ROM from command line if necessary
     Load_ROM_Command_Line();
+
+    // Activate debugger and queue script commands if --debug-script was given
+    #ifdef MEKA_Z80_DEBUGGER
+    if (g_env.debug_script_filename)
+    {
+        if (!Debugger.active)
+            Debugger_Switch();
+        Debugger_Script_Load(g_env.debug_script_filename);
+    }
+    #endif
 
     // Wait for Win32 console signal
     if (!ConsoleWaitForAnswer(true))

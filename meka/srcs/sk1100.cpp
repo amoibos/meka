@@ -231,7 +231,8 @@ void    SK1100_Update()
             const t_sk1100_key *sk1100_key = &SK1100_Keys[k->key_sk1100];
             tsms.Control [sk1100_key->row] &= (~sk1100_key->bit);
             tsms.Control_Check_GUI = FALSE;
-      //Msg(MSGT_USER, "Pressed %d -> %d", k->key_pc, k->key_sk1100);
+            if (Inputs_KeyPressed(k->key_pc, FALSE))
+                Msg(MSGT_USER, "SK-1100: %s", sk1100_key->desc);
         }
     }
 }
