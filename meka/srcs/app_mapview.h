@@ -47,6 +47,11 @@ struct t_tilemap_viewer
     int                     config_tilemap_addr_manual_step_count;      // SMS: 8      Wide: 4      SG/SC: 16
     int                     tile_hovered;
     int                     tile_selected;
+
+    float                   zoom;
+    ALLEGRO_BITMAP*         tilemap_temp_bitmap;
+    int                     tilemap_unscaled_w;
+    int                     tilemap_unscaled_h;
 };
 
 extern t_tilemap_viewer *   TilemapViewer_MainInstance;

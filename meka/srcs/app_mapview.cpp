@@ -69,9 +69,18 @@ t_tilemap_viewer *  TilemapViewer_New(bool register_desktop)
     app->tile_hovered               = -1;
     app->tile_selected              = 0;
 
+    app->zoom = g_config.mapview_scale;
+    if (app->zoom < 0.1f) app->zoom = 1.0f;
+    app->tilemap_temp_bitmap = NULL;
+
     // Start with SMS/GG layout because it is the biggest and we can't resize a gui box above its initial size
     app->layout = TILEMAP_VIEWER_LAYOUT_SMSGG;
     TilemapViewer_SetupLayoutSizes(app);
+
+    // Create tilemap temp bitmap
+    if (app->tilemap_temp_bitmap != NULL)
+        al_destroy_bitmap(app->tilemap_temp_bitmap);
+    app->tilemap_temp_bitmap = al_create_bitmap(app->tilemap_unscaled_w, app->tilemap_unscaled_h);
 
     // Create box
     app->frame_box.pos.x        = 524;
@@ -93,6 +102,8 @@ t_tilemap_viewer *  TilemapViewer_New(bool register_desktop)
 
 void    TilemapViewer_Delete(t_tilemap_viewer *app)
 {
+    if (app->tilemap_temp_bitmap != NULL)
+        al_destroy_bitmap(app->tilemap_temp_bitmap);
     // Remove from global list
     list_remove(&TilemapViewers, app);
     free(app);
@@ -103,21 +114,31 @@ void    TilemapViewer_ChangeLayout(t_tilemap_viewer *app, t_tilemap_viewer_layou
     app->layout = layout;
     gui_box_destroy_widgets(app->box);
     TilemapViewer_SetupLayoutSizes(app);
+
+    if (app->tilemap_temp_bitmap != NULL)
+        al_destroy_bitmap(app->tilemap_temp_bitmap);
+    app->tilemap_temp_bitmap = al_create_bitmap(app->tilemap_unscaled_w, app->tilemap_unscaled_h);
+
     gui_box_resize(app->box, app->frame_box.size.x, app->frame_box.size.y, false);
     TilemapViewer_Layout(app, true);
 }
 
 void    TilemapViewer_SetupLayoutSizes(t_tilemap_viewer *app)
 {
+    const int z = (int)(app->zoom + 0.5f);
+
     switch (app->layout)
     {
     case TILEMAP_VIEWER_LAYOUT_SMSGG:
     case TILEMAP_VIEWER_LAYOUT_SMSGG_EXTRAHEIGHT:
         {
+            app->tilemap_unscaled_w = 256;
+            app->tilemap_unscaled_h = (app->layout == TILEMAP_VIEWER_LAYOUT_SMSGG_EXTRAHEIGHT) ? 256 : 224;
+
             app->frame_tilemap.pos.x        = TILEMAP_VIEWER_PADDING;
             app->frame_tilemap.pos.y        = TILEMAP_VIEWER_PADDING;
-            app->frame_tilemap.size.x       = 256;
-            app->frame_tilemap.size.y       = (app->layout == TILEMAP_VIEWER_LAYOUT_SMSGG_EXTRAHEIGHT) ? 256 : 224;
+            app->frame_tilemap.size.x       = 256 * z;
+            app->frame_tilemap.size.y       = app->tilemap_unscaled_h * z;
 
             app->frame_infos.pos.x          = TILEMAP_VIEWER_PADDING;
             app->frame_infos.pos.y          = app->frame_tilemap.pos.y + app->frame_tilemap.size.y + TILEMAP_VIEWER_PADDING;
@@ -131,7 +152,7 @@ void    TilemapViewer_SetupLayoutSizes(t_tilemap_viewer *app)
 
             app->frame_tilemap_addr.pos.x   = TILEMAP_VIEWER_PADDING;
             app->frame_tilemap_addr.pos.y   = app->frame_infos.pos.y + app->frame_infos.size.y + TILEMAP_VIEWER_PADDING;
-            app->frame_tilemap_addr.size.x  = 256;
+            app->frame_tilemap_addr.size.x  = 256 * z;
             app->frame_tilemap_addr.size.y  = 16;
 
             // Box size (note that we don't touch pos here)
@@ -141,10 +162,13 @@ void    TilemapViewer_SetupLayoutSizes(t_tilemap_viewer *app)
         }
     case TILEMAP_VIEWER_LAYOUT_SGSC:
         {
+            app->tilemap_unscaled_w = 256;
+            app->tilemap_unscaled_h = 192;
+
             app->frame_tilemap.pos.x        = TILEMAP_VIEWER_PADDING;
             app->frame_tilemap.pos.y        = TILEMAP_VIEWER_PADDING;
-            app->frame_tilemap.size.x       = 256;
-            app->frame_tilemap.size.y       = 192;
+            app->frame_tilemap.size.x       = 256 * z;
+            app->frame_tilemap.size.y       = 192 * z;
 
             app->frame_infos.pos.x          = TILEMAP_VIEWER_PADDING;
             app->frame_infos.pos.y          = app->frame_tilemap.pos.y + app->frame_tilemap.size.y + TILEMAP_VIEWER_PADDING;
@@ -158,7 +182,7 @@ void    TilemapViewer_SetupLayoutSizes(t_tilemap_viewer *app)
 
             app->frame_tilemap_addr.pos.x   = TILEMAP_VIEWER_PADDING;
             app->frame_tilemap_addr.pos.y   = app->frame_infos.pos.y + app->frame_infos.size.y + TILEMAP_VIEWER_PADDING;
-            app->frame_tilemap_addr.size.x  = 256;
+            app->frame_tilemap_addr.size.x  = 256 * z;
             app->frame_tilemap_addr.size.y  = 16*1;
 
             // Box size (note that we don't touch pos here)
@@ -269,7 +293,23 @@ void         TilemapViewer_CallbackTilemapClick(t_widget *w)
     const int mx = app->frame_tilemap_zone->mouse_x;
     const int my = app->frame_tilemap_zone->mouse_y;
     if (app->frame_tilemap_zone->mouse_action & WIDGET_MOUSE_ACTION_HOVER)
-        app->tile_selected = (mx / 8) + (my / 8) * 32;
+    {
+        const float z = app->zoom;
+        if (tsms.VDP_VideoMode == 0)
+        {
+            const int lpad = 8;
+            if (z <= 1.0f)
+                app->tile_selected = (my / 8) * 40 + (mx - lpad) / 6;
+            else
+                app->tile_selected = ((int)(my / z) / 8) * 40 + ((int)((mx - lpad * (int)(z + 0.5f)) / z) / 6);
+        }
+        else
+        {
+            app->tile_selected = (z <= 1.0f)
+                ? (mx / 8) + (my / 8) * 32
+                : ((int)(my / z) / 8) + ((int)(mx / z) / 8) * 32;
+        }
+    }
 }
 
 void        TilemapViewer_CallbackTilemapAddressScroll(t_widget *w)
@@ -342,21 +382,32 @@ void         TilemapViewer_Update(t_tilemap_viewer *app)
 
     TilemapViewer_UpdateAddresses(app);
 
+    const int z_i = (int)(app->zoom + 0.5f);
+    const bool use_zoom = (z_i > 1);
+
     // Update tilemap
     al_set_target_bitmap(app->box->gfx_buffer);
 
     // FIXME: Video mode numbers
     if (tsms.VDP_VideoMode == 2)
     {
-        gui_frame_clear(app->box->gfx_buffer, &app->frame_tilemap, COLOR_SKIN_WINDOW_BACKGROUND);
-        ALLEGRO_LOCKED_REGION* locked_region = al_lock_bitmap(app->box->gfx_buffer, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE);
+        ALLEGRO_BITMAP* draw_target;
+        int tile_base_x, tile_base_y;
+
+        if (use_zoom) {
+            draw_target = app->tilemap_temp_bitmap;
+            tile_base_x = 0;
+            tile_base_y = 0;
+        } else {
+            draw_target = app->box->gfx_buffer;
+            tile_base_x = app->frame_tilemap.pos.x;
+            tile_base_y = app->frame_tilemap.pos.y;
+            gui_frame_clear(app->box->gfx_buffer, &app->frame_tilemap, COLOR_SKIN_WINDOW_BACKGROUND);
+        }
+
+        ALLEGRO_LOCKED_REGION* locked_region = al_lock_bitmap(draw_target, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE);
 
         // Draw tilemap
-        // TODO: pattern name addr slider, 0x0000 -> 0x3C00, 0x0400 increments
-        // TODO: vsection mask (use proper name)
-        // TODO: pattern data base addr
-        // TODO: color table base addr
-        // TODO: show info per tile: Index, X,Y, pattern_name
         const u8* pattern_name_table = VRAM + app->config_tilemap_addr;
         const int vsection_mask = sms.VDP[4] & 3;
         int y = 0;
@@ -374,9 +425,9 @@ void         TilemapViewer_Update(t_tilemap_viewer *app)
                     const u8* p2 = col_base  + pattern_name;        // Color table
 
                     // Draw one tile
-                    const int dst_x = app->frame_tilemap.pos.x + x;
-                    const int dst_y = app->frame_tilemap.pos.y + y;
-                    VDP_Mode0123_DrawTile(app->box->gfx_buffer, locked_region, dst_x, dst_y, p1, p2);
+                    const int dst_x = tile_base_x + x;
+                    const int dst_y = tile_base_y + y;
+                    VDP_Mode0123_DrawTile(draw_target, locked_region, dst_x, dst_y, p1, p2);
                     p1 += 8;
                     p2 += 8;
                     x += 8;
@@ -385,20 +436,41 @@ void         TilemapViewer_Update(t_tilemap_viewer *app)
             }
         }
 
-        al_unlock_bitmap(app->box->gfx_buffer);
+        al_unlock_bitmap(draw_target);
+
+        if (use_zoom)
+        {
+            al_set_target_bitmap(app->box->gfx_buffer);
+            al_draw_scaled_bitmap(app->tilemap_temp_bitmap, 0, 0, app->tilemap_unscaled_w, app->tilemap_unscaled_h,
+                                  app->frame_tilemap.pos.x, app->frame_tilemap.pos.y,
+                                  (float)app->frame_tilemap.size.x, (float)app->frame_tilemap.size.y, 0);
+        }
     }
     else if (tsms.VDP_VideoMode >= 4)
     {
-        ALLEGRO_LOCKED_REGION* locked_region = al_lock_bitmap(app->box->gfx_buffer, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE);
+        ALLEGRO_BITMAP* draw_target;
+        int tile_base_x, tile_base_y;
+
+        if (use_zoom) {
+            draw_target = app->tilemap_temp_bitmap;
+            tile_base_x = 0;
+            tile_base_y = 0;
+        } else {
+            draw_target = app->box->gfx_buffer;
+            tile_base_x = app->frame_tilemap.pos.x;
+            tile_base_y = app->frame_tilemap.pos.y;
+        }
+
+        ALLEGRO_LOCKED_REGION* locked_region = al_lock_bitmap(draw_target, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE);
 
         // Draw tilemap
         const u16 *map = (u16 *)(VRAM + app->config_tilemap_addr);
-        for (int j = 0; j != app->frame_tilemap.size.y/8; j++)
+        for (int j = 0; j != app->tilemap_unscaled_h/8; j++)
         {
-            const int dst_y = app->frame_tilemap.pos.y + (j << 3);
-            for (int i = 0; i != app->frame_tilemap.size.x/8; i++)
+            const int dst_y = tile_base_y + (j << 3);
+            for (int i = 0; i != app->tilemap_unscaled_w/8; i++)
             {
-                const int   dst_x           = app->frame_tilemap.pos.x + (i << 3);
+                const int   dst_x           = tile_base_x + (i << 3);
                 const u16   map_item        = *map++;
                 const int   tile_index      = (map_item & 0x01FF);
                 const u32 * tile_palette    = (map_item & 0x0800) ? &Palette_EmulationToHostGui[16] : &Palette_EmulationToHostGui[0];
@@ -424,11 +496,110 @@ void         TilemapViewer_Update(t_tilemap_viewer *app)
                     }
 
                     // Draw
-                    VDP_Mode4_DrawTile(app->box->gfx_buffer, locked_region, tile_pixels, tile_palette, dst_x, dst_y, tile_flip);
+                    VDP_Mode4_DrawTile(draw_target, locked_region, tile_pixels, tile_palette, dst_x, dst_y, tile_flip);
                 }
             }
         }
-        al_unlock_bitmap(app->box->gfx_buffer);
+        al_unlock_bitmap(draw_target);
+
+        if (use_zoom)
+        {
+            al_set_target_bitmap(app->box->gfx_buffer);
+            al_draw_scaled_bitmap(app->tilemap_temp_bitmap, 0, 0, app->tilemap_unscaled_w, app->tilemap_unscaled_h,
+                                  app->frame_tilemap.pos.x, app->frame_tilemap.pos.y,
+                                  (float)app->frame_tilemap.size.x, (float)app->frame_tilemap.size.y, 0);
+        }
+    }
+    else if (tsms.VDP_VideoMode == 0)
+    {
+        // Mode 0 (Text Mode): 40×24 characters, 6×8 pixels each
+        // Draws centered in the tilemap frame with 8px left/right padding
+        ALLEGRO_BITMAP* draw_target;
+        int tile_base_x, tile_base_y;
+
+        if (use_zoom) {
+            draw_target = app->tilemap_temp_bitmap;
+            tile_base_x = 8;
+            tile_base_y = 0;
+        } else {
+            draw_target = app->box->gfx_buffer;
+            tile_base_x = app->frame_tilemap.pos.x + 8;
+            tile_base_y = app->frame_tilemap.pos.y;
+            gui_frame_clear(app->box->gfx_buffer, &app->frame_tilemap, COLOR_SKIN_WINDOW_BACKGROUND);
+        }
+
+        ALLEGRO_LOCKED_REGION* locked_region = al_lock_bitmap(draw_target, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE);
+        const int color_format = al_get_bitmap_format(draw_target);
+        const int bits = al_get_pixel_format_bits(color_format);
+        const int fg_color = Palette_EmulationToHostGui[sms.VDP[7] >> 4];
+        const int bg_color = Palette_EmulationToHostGui[0];
+
+        const u8* name_table = g_machine.VDP.name_table_address;
+
+        if (bits == 16)
+        {
+            u16* dst_data = (u16*)locked_region->data;
+            const int dst_pitch = locked_region->pitch >> 1;
+            int dst_y = tile_base_y;
+            for (int row = 0; row < 24; row++)
+            {
+                const u8* tile_n = name_table + row * 40;
+                for (int k = 0; k < 8; k++)
+                {
+                    u16* dst = dst_data + dst_pitch * (dst_y + k) + tile_base_x;
+                    for (int col = 0; col < 40; col++)
+                    {
+                        const u8 src6 = g_machine.VDP.sg_pattern_gen_address[(*tile_n * 8) + k];
+                        dst[0] = (src6 & 0x80) ? (u16)fg_color : (u16)bg_color;
+                        dst[1] = (src6 & 0x40) ? (u16)fg_color : (u16)bg_color;
+                        dst[2] = (src6 & 0x20) ? (u16)fg_color : (u16)bg_color;
+                        dst[3] = (src6 & 0x10) ? (u16)fg_color : (u16)bg_color;
+                        dst[4] = (src6 & 0x08) ? (u16)fg_color : (u16)bg_color;
+                        dst[5] = (src6 & 0x04) ? (u16)fg_color : (u16)bg_color;
+                        dst += 6;
+                        tile_n++;
+                    }
+                }
+                dst_y += 8;
+            }
+        }
+        else if (bits == 32)
+        {
+            u32* dst_data = (u32*)locked_region->data;
+            const int dst_pitch = locked_region->pitch >> 2;
+            int dst_y = tile_base_y;
+            for (int row = 0; row < 24; row++)
+            {
+                const u8* tile_n = name_table + row * 40;
+                for (int k = 0; k < 8; k++)
+                {
+                    u32* dst = dst_data + dst_pitch * (dst_y + k) + tile_base_x;
+                    for (int col = 0; col < 40; col++)
+                    {
+                        const u8 src6 = g_machine.VDP.sg_pattern_gen_address[(*tile_n * 8) + k];
+                        dst[0] = (src6 & 0x80) ? (u32)fg_color : (u32)bg_color;
+                        dst[1] = (src6 & 0x40) ? (u32)fg_color : (u32)bg_color;
+                        dst[2] = (src6 & 0x20) ? (u32)fg_color : (u32)bg_color;
+                        dst[3] = (src6 & 0x10) ? (u32)fg_color : (u32)bg_color;
+                        dst[4] = (src6 & 0x08) ? (u32)fg_color : (u32)bg_color;
+                        dst[5] = (src6 & 0x04) ? (u32)fg_color : (u32)bg_color;
+                        dst += 6;
+                        tile_n++;
+                    }
+                }
+                dst_y += 8;
+            }
+        }
+
+        al_unlock_bitmap(draw_target);
+
+        if (use_zoom)
+        {
+            al_set_target_bitmap(app->box->gfx_buffer);
+            al_draw_scaled_bitmap(app->tilemap_temp_bitmap, 0, 0, app->tilemap_unscaled_w, app->tilemap_unscaled_h,
+                                  app->frame_tilemap.pos.x, app->frame_tilemap.pos.y,
+                                  (float)app->frame_tilemap.size.x, (float)app->frame_tilemap.size.y, 0);
+        }
     }
     else
     {
@@ -449,7 +620,21 @@ void         TilemapViewer_Update(t_tilemap_viewer *app)
         const int mx = app->frame_tilemap_zone->mouse_x;
         const int my = app->frame_tilemap_zone->mouse_y;
         if (app->frame_tilemap_zone->mouse_action & WIDGET_MOUSE_ACTION_HOVER)
-            app->tile_hovered = (mx / 8) + (my / 8) * 32;
+        {
+            if (tsms.VDP_VideoMode == 0)
+            {
+                const int lpad = 8;
+                app->tile_hovered = use_zoom
+                    ? ((int)(my / app->zoom) / 8) * 40 + ((int)((mx - lpad * z_i) / app->zoom) / 6)
+                    : (my / 8) * 40 + (mx - lpad) / 6;
+            }
+            else
+            {
+                app->tile_hovered = use_zoom
+                    ? ((int)(my / app->zoom) / 8) + ((int)(mx / app->zoom) / 8) * 32
+                    : (mx / 8) + (my / 8) * 32;
+            }
+        }
         else
             app->tile_hovered = -1;
     }
@@ -507,13 +692,17 @@ static void     TilemapViewer_UpdateAddresses(t_tilemap_viewer *app)
 
 static void     TilemapViewer_UpdateInfos(t_tilemap_viewer *app)
 {
-    const int tile_count = (app->frame_tilemap.size.x / 8) * (app->frame_tilemap.size.y / 8);
+    const int z_i = (int)(app->zoom + 0.5f);
+    const bool is_mode0 = (tsms.VDP_VideoMode == 0);
+    const int cols = is_mode0 ? 40 : 32;
+    const int rows = is_mode0 ? 24 : (app->tilemap_unscaled_h / 8);
+    const int tile_count = cols * rows;
     if (app->tile_selected >= tile_count)
         app->tile_selected = 0;
 
     const int  tile_current = (app->tile_hovered == -1) ? app->tile_selected : app->tile_hovered;
-    const int  tile_current_x = tile_current & 31;
-    const int  tile_current_y = tile_current >> 5;
+    const int  tile_current_x = is_mode0 ? (tile_current % cols) : (tile_current & 31);
+    const int  tile_current_y = is_mode0 ? (tile_current / cols) : (tile_current >> 5);
 
     al_set_target_bitmap(app->box->gfx_buffer);
     gui_frame_clear(app->box->gfx_buffer, &app->frame_infos, COLOR_SKIN_WINDOW_BACKGROUND);
@@ -561,28 +750,61 @@ static void     TilemapViewer_UpdateInfos(t_tilemap_viewer *app)
         fp.Printf(pos, "X:       %d", tile_current_x); pos += vh;
         fp.Printf(pos, "Y:       %d", tile_current_y); pos += vh;
 
-        const int vsection_mask = sms.VDP[4] & 3;
-        const int vsection_idx = tile_current_y / 8;
-        const u8 char_name = VRAM[(app->config_tilemap_addr + tile_current) & 0x3FFF];
-        const u32 char_name_addr = char_name * 8;
-        const u8* tile_base = g_machine.VDP.sg_pattern_gen_address + ((vsection_idx & vsection_mask) * 0x800);  // Pattern data base
-        const u8* col_base = g_machine.VDP.sg_color_table_address + ((vsection_idx & vsection_mask) * 0x800);   // Color table base
-        const u8* char_pattern_data = tile_base + char_name_addr;
-        const u8* char_color_data = col_base  + char_name_addr;
+        if (is_mode0)
+        {
+            const u8 char_name = VRAM[(g_machine.VDP.name_table_address - VRAM + tile_current) & 0x3FFF];
+            const u8* pattern_data = g_machine.VDP.sg_pattern_gen_address + (char_name * 8);
 
-        fp.Printf(pos, "Name:    1 byte @ VRAM $%04X", (app->config_tilemap_addr + tile_current) & 0x3FFF); pos += vh;
-        fp.Printf(pos, "         $%02X", char_name); pos += vh;
+            fp.Printf(pos, "Mode:    Text (Mode 0)"); pos += vh;
 
-        fp.Printf(pos, "Pattern: 8 bytes @ VRAM $%04X", char_pattern_data - VRAM); pos += vh;
-        fp.Printf(pos, "         $%02X $%02X $%02X $%02X $%02X $%02X $%02X $%02X", char_pattern_data[0], char_pattern_data[1], char_pattern_data[2], char_pattern_data[3], char_pattern_data[4], char_pattern_data[5], char_pattern_data[6], char_pattern_data[7]); pos += vh;
+            fp.Printf(pos, "Name:    1 byte @ VRAM $%04X", (int)(g_machine.VDP.name_table_address - VRAM + tile_current) & 0x3FFF); pos += vh;
+            fp.Printf(pos, "         $%02X", char_name); pos += vh;
 
-        fp.Printf(pos, "Color:   8 bytes @ VRAM $%04X", char_color_data - VRAM); pos += vh;
-        fp.Printf(pos, "         $%02X $%02X $%02X $%02X $%02X $%02X $%02X $%02X", char_color_data[0], char_color_data[1], char_color_data[2], char_color_data[3], char_color_data[4], char_color_data[5], char_color_data[6], char_color_data[7]); pos += vh;
+            fp.Printf(pos, "Pattern: 8 bytes @ VRAM $%04X", (int)(pattern_data - VRAM) & 0x3FFF); pos += vh;
+            fp.Printf(pos, "         $%02X $%02X $%02X $%02X $%02X $%02X $%02X $%02X",
+                pattern_data[0], pattern_data[1], pattern_data[2], pattern_data[3],
+                pattern_data[4], pattern_data[5], pattern_data[6], pattern_data[7]); pos += vh;
+
+            fp.Printf(pos, "FG Color: VDP[7]>>4 = %d", sms.VDP[7] >> 4); pos += vh;
+            fp.Printf(pos, "BG Color: palette[0]"); pos += vh;
+        }
+        else
+        {
+            const int vsection_mask = sms.VDP[4] & 3;
+            const int vsection_idx = tile_current_y / 8;
+            const u8 char_name = VRAM[(app->config_tilemap_addr + tile_current) & 0x3FFF];
+            const u32 char_name_addr = char_name * 8;
+            const u8* tile_base = g_machine.VDP.sg_pattern_gen_address + ((vsection_idx & vsection_mask) * 0x800);  // Pattern data base
+            const u8* col_base = g_machine.VDP.sg_color_table_address + ((vsection_idx & vsection_mask) * 0x800);   // Color table base
+            const u8* char_pattern_data = tile_base + char_name_addr;
+            const u8* char_color_data = col_base  + char_name_addr;
+
+            fp.Printf(pos, "Name:    1 byte @ VRAM $%04X", (app->config_tilemap_addr + tile_current) & 0x3FFF); pos += vh;
+            fp.Printf(pos, "         $%02X", char_name); pos += vh;
+
+            fp.Printf(pos, "Pattern: 8 bytes @ VRAM $%04X", char_pattern_data - VRAM); pos += vh;
+            fp.Printf(pos, "         $%02X $%02X $%02X $%02X $%02X $%02X $%02X $%02X", char_pattern_data[0], char_pattern_data[1], char_pattern_data[2], char_pattern_data[3], char_pattern_data[4], char_pattern_data[5], char_pattern_data[6], char_pattern_data[7]); pos += vh;
+
+            fp.Printf(pos, "Color:   8 bytes @ VRAM $%04X", char_color_data - VRAM); pos += vh;
+            fp.Printf(pos, "         $%02X $%02X $%02X $%02X $%02X $%02X $%02X $%02X", char_color_data[0], char_color_data[1], char_color_data[2], char_color_data[3], char_color_data[4], char_color_data[5], char_color_data[6], char_color_data[7]); pos += vh;
+        }
     }
 
-    al_draw_rectangle(
-        app->frame_tilemap.pos.x+tile_current_x*8-0.5f, app->frame_tilemap.pos.y+tile_current_y*8-0.5f,
-        app->frame_tilemap.pos.x+tile_current_x*8+8.5f, app->frame_tilemap.pos.y+tile_current_y*8+8.5f, COLOR_WHITE, 1.0f);
+    if (is_mode0)
+    {
+        const int lpad = 8;
+        al_draw_rectangle(
+            app->frame_tilemap.pos.x + lpad * z_i + tile_current_x * 6 * z_i - 0.5f,
+            app->frame_tilemap.pos.y + tile_current_y * 8 * z_i - 0.5f,
+            app->frame_tilemap.pos.x + lpad * z_i + tile_current_x * 6 * z_i + 6 * z_i + 0.5f,
+            app->frame_tilemap.pos.y + tile_current_y * 8 * z_i + 8 * z_i + 0.5f, COLOR_WHITE, 1.0f);
+    }
+    else
+    {
+        al_draw_rectangle(
+            app->frame_tilemap.pos.x+tile_current_x*8*z_i-0.5f, app->frame_tilemap.pos.y+tile_current_y*8*z_i-0.5f,
+            app->frame_tilemap.pos.x+tile_current_x*8*z_i+8*z_i+0.5f, app->frame_tilemap.pos.y+tile_current_y*8*z_i+8*z_i+0.5f, COLOR_WHITE, 1.0f);
+    }
 
     // Tilemap Address
     al_draw_filled_rectangle(
@@ -591,11 +813,15 @@ static void     TilemapViewer_UpdateInfos(t_tilemap_viewer *app)
         COLOR_SKIN_WINDOW_BACKGROUND);
 
     v2i pos = app->frame_tilemap_addr.pos + v2i(2,3+2);
-    fp.Printf(pos, "Tilemap @ VRAM $%04X", app->config_tilemap_addr);
+    if (is_mode0)
+        fp.Printf(pos, "Name Table @ VRAM $%04X", (int)(g_machine.VDP.name_table_address - VRAM) & 0x3FFF);
+    else
+        fp.Printf(pos, "Tilemap @ VRAM $%04X", app->config_tilemap_addr);
 }
 
 static void     TilemapViewer_UpdateScrollDrawLineWrap(t_tilemap_viewer *app, int y, int x1, int x2, ALLEGRO_COLOR color)
 {
+    const int z_i = (int)(app->zoom + 0.5f);
     x1 &= 255;
     x2 &= 255;
     if (Wide_Screen_28)
@@ -612,28 +838,28 @@ static void     TilemapViewer_UpdateScrollDrawLineWrap(t_tilemap_viewer *app, in
     if (x1 < x2)
     {
         al_draw_hline(
-            app->frame_tilemap.pos.x + x1,
-            app->frame_tilemap.pos.y + y,
-            app->frame_tilemap.pos.x + x2,
+            app->frame_tilemap.pos.x + x1 * z_i,
+            app->frame_tilemap.pos.y + y * z_i,
+            app->frame_tilemap.pos.x + x2 * z_i,
             color);
     }
     else if (x1 > x2)
     {
         al_draw_hline(
-            app->frame_tilemap.pos.x + x1,
-            app->frame_tilemap.pos.y + y,
-            app->frame_tilemap.pos.x + 255,
+            app->frame_tilemap.pos.x + x1 * z_i,
+            app->frame_tilemap.pos.y + y * z_i,
+            app->frame_tilemap.pos.x + 255 * z_i,
             color);
         al_draw_hline(
             app->frame_tilemap.pos.x + 0,
-            app->frame_tilemap.pos.y + y,
-            app->frame_tilemap.pos.x + x2,
+            app->frame_tilemap.pos.y + y * z_i,
+            app->frame_tilemap.pos.x + x2 * z_i,
             color);
     }
     else
     {
         // draw pixel is actually pixel than putpixel on a video memory buffer (no need to lock in/out)
-        al_draw_pixel(app->frame_tilemap.pos.x + x1 + 0.5f, app->frame_tilemap.pos.y + y + 0.5f, color);
+        al_draw_pixel(app->frame_tilemap.pos.x + x1 * z_i + 0.5f, app->frame_tilemap.pos.y + y * z_i + 0.5f, color);
     }
 }
 

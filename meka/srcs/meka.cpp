@@ -172,6 +172,12 @@ static void Init_Default_Values()
     // Applet: Game Screen
     g_config.game_window_scale             = 1.0f;
 
+    // Applet: Tile Viewer
+    g_config.tileview_scale               = 2.0f;
+
+    // Applet: Tilemap Viewer
+    g_config.mapview_scale                = 2.0f;
+
     // Applet: File Browser
     g_config.fb_close_after_load           = false;
     g_config.fb_uses_DB                    = true;

@@ -26,6 +26,11 @@ struct t_app_tile_viewer
 
 	t_widget *	vram_addr_tms9918_scrollbar;
 	int			vram_addr_tms9918_current;
+
+	float			zoom;
+	ALLEGRO_BITMAP*	tiles_temp_bitmap;
+	int				tiles_unscaled_w;
+	int				tiles_unscaled_h;
 };
 
 extern t_app_tile_viewer   TileViewer;

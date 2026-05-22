@@ -279,6 +279,12 @@ struct t_meka_config
     // Applet: Game Screen
     float   game_window_scale;
 
+    // Applet: Tile Viewer
+    float   tileview_scale;
+
+    // Applet: Tilemap Viewer
+    float   mapview_scale;
+
     // Applet: File Browser
     bool    fb_close_after_load;
     bool    fb_uses_DB;

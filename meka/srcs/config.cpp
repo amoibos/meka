@@ -97,6 +97,8 @@ static void     Configuration_Load_Line (char *var, char *value)
     if (!strcmp(var, "start_in_gui"))                   { g_config.start_in_gui = (bool)atoi(value); return; }
     if (!strcmp(var, "theme"))                          { Skins_SetSkinConfiguration(value); return; }
     if (!strcmp(var, "game_window_scale"))              { g_config.game_window_scale = atof(value); if (g_config.game_window_scale < 0) g_config.game_window_scale = 1.0f; return; }
+    if (!strcmp(var, "tileview_scale"))                 { g_config.tileview_scale = atof(value); if (g_config.tileview_scale < 0.1f) g_config.tileview_scale = 1.0f; return; }
+    if (!strcmp(var, "mapview_scale"))                  { g_config.mapview_scale = atof(value); if (g_config.mapview_scale < 0.1f) g_config.mapview_scale = 1.0f; return; }
     if (!strcmp(var, "fb_uses_db"))                     { g_config.fb_uses_DB = (bool)atoi(value); return; }
     if (!strcmp(var, "fb_close_after_load"))            { g_config.fb_close_after_load = (bool)atoi(value); return; }
     if (!strcmp(var, "fb_fullscreen_after_load"))       { g_config.fullscreen_after_load = (bool)atoi(value); return; }
@@ -295,6 +297,8 @@ void Configuration_Save()
     CFG_Write_Int  ("start_in_gui", g_config.start_in_gui);
     CFG_Write_StrEscape("theme", Skins_GetCurrentSkin()->name);
     fprintf(CFG_File, "game_window_scale = %.2f\n", g_config.game_window_scale);
+    fprintf(CFG_File, "tileview_scale = %.2f\n", g_config.tileview_scale);
+    fprintf(CFG_File, "mapview_scale = %.2f\n", g_config.mapview_scale);
     CFG_Write_Int  ("fb_uses_db", g_config.fb_uses_DB);
     CFG_Write_Int  ("fb_close_after_load", g_config.fb_close_after_load);
     CFG_Write_Int  ("fb_fullscreen_after_load", g_config.fullscreen_after_load);

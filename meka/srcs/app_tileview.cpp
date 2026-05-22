@@ -45,6 +45,10 @@ void    TileViewer_Init_Values()
     TileViewer.tiles_width          = -1;
     TileViewer.tiles_height         = -1;
     TileViewer.tiles_display_zone   = NULL;
+    TileViewer.zoom                 = 1.0f;
+    TileViewer.tiles_temp_bitmap    = NULL;
+    TileViewer.tiles_unscaled_w     = 0;
+    TileViewer.tiles_unscaled_h     = 0;
 }
 
 // CREATE AND INITIALIZE TILE VIEWER APPLET ----------------------------------
@@ -52,16 +56,28 @@ void    TileViewer_Init()
 {
     t_app_tile_viewer *app = &TileViewer; // Global instance
 
+    app->zoom = g_config.tileview_scale;
+    if (app->zoom < 0.1f) app->zoom = 1.0f;
+
     // Setup members
     app->tiles_width  = 16;
     app->tiles_height = app->tiles_per_page / app->tiles_width;
-    app->tiles_display_frame.SetPos(0, 13);
-    app->tiles_display_frame.SetSize(app->tiles_width * 8, app->tiles_height * 8);
+    app->tiles_unscaled_w = app->tiles_width * 8;
+    app->tiles_unscaled_h = app->tiles_height * 8;
 
-	app->tile_selected_frame.SetPos(2, app->tiles_display_frame.GetMax().y+1);
-	app->tile_selected_frame.SetSize(8,8);
+    const int z = (int)(app->zoom + 0.5f);
+    app->tiles_display_frame.SetPos(0, 13);
+    app->tiles_display_frame.SetSize(app->tiles_unscaled_w * z, app->tiles_unscaled_h * z);
+
+	app->tile_selected_frame.SetPos(2 * z, app->tiles_display_frame.GetMax().y+1);
+	app->tile_selected_frame.SetSize(8 * z, 8 * z);
 
 	app->vram_addr_tms9918_current = 0;
+
+    // Create temp bitmap for unscaled tile rendering
+    if (app->tiles_temp_bitmap != NULL)
+        al_destroy_bitmap(app->tiles_temp_bitmap);
+    app->tiles_temp_bitmap = al_create_bitmap(app->tiles_unscaled_w, app->tiles_unscaled_h);
 
     // Create box
     t_frame frame;
@@ -106,7 +122,7 @@ void    TileViewer_Layout(t_app_tile_viewer *app, bool setup)
 
 	// Rectangle enclosing current/selected tile
 	const t_frame* fr = &app->tile_selected_frame;
-    gui_rect(LOOK_THIN, fr->pos.x, fr->pos.y, fr->pos.x + 11, fr->pos.y + 11, COLOR_SKIN_WIDGET_GENERIC_BORDER);
+    gui_rect(LOOK_THIN, fr->pos.x, fr->pos.y, fr->pos.x + fr->size.x + 3, fr->pos.y + fr->size.y + 3, COLOR_SKIN_WIDGET_GENERIC_BORDER);
 }
 
 void    TileViewer_Update(t_app_tile_viewer *app)
@@ -125,6 +141,9 @@ void    TileViewer_Update(t_app_tile_viewer *app)
         app->dirty = TRUE;
     }
 
+    const int z = (int)(app->zoom + 0.5f);
+    const bool use_zoom = (z > 1);
+
     bool dirty_all = app->dirty || Palette_EmulationDirtyAny;
     bool dirty = dirty_all;
 
@@ -132,16 +151,17 @@ void    TileViewer_Update(t_app_tile_viewer *app)
     {
         const int mx = app->tiles_display_zone->mouse_x;
         const int my = app->tiles_display_zone->mouse_y;
-        // Msg(MSGT_USER, "mx = %d, my = %d", mx, my);
         if (app->tiles_display_zone->mouse_action & WIDGET_MOUSE_ACTION_HOVER)
-            app->tile_hovered = ((my / 8) * 16) + mx / 8;
+            app->tile_hovered = use_zoom
+                ? ((int)(my / app->zoom) / 8) * 16 + (int)(mx / app->zoom) / 8
+                : ((my / 8) * 16) + mx / 8;
         else
             app->tile_hovered = -1;
     }
 
     // Compute the tile that is to display in the bottom info line
     int tile_current = (app->tile_hovered != -1) ? app->tile_hovered : app->tile_selected;
-    bool tile_current_refresh = /*(tile_current == -1) ? FALSE : */ (((tile_current != app->tile_displayed) || dirty_all || tgfx.Tile_Dirty [tile_current]));
+    bool tile_current_refresh = (((tile_current != app->tile_displayed) || dirty_all || tgfx.Tile_Dirty [tile_current]));
     int tile_current_addr = -1;
 	
 	const v2i tiles_frame_pos = app->tiles_display_frame.pos;
@@ -152,7 +172,6 @@ void    TileViewer_Update(t_app_tile_viewer *app)
 	int vram_tile_size = 1;
 
     // Then redraw all tiles
-	ALLEGRO_LOCKED_REGION* locked_region = al_lock_bitmap(app->box->gfx_buffer, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE);
     switch (g_driver->vdp)
     {
     case VDP_SMSGG:
@@ -165,6 +184,20 @@ void    TileViewer_Update(t_app_tile_viewer *app)
             int n = 0;
             const u8 *    nd = &tgfx.Tile_Decoded[0][0];
             const u32 *   palette_host = app->palette ? &Palette_EmulationToHostGui[16] : &Palette_EmulationToHostGui[0];
+
+            ALLEGRO_BITMAP* target_bmp;
+            int base_x, base_y;
+            if (use_zoom) {
+                target_bmp = app->tiles_temp_bitmap;
+                base_x = 0;
+                base_y = 0;
+            } else {
+                target_bmp = bmp;
+                base_x = tiles_frame_pos.x;
+                base_y = tiles_frame_pos.y;
+            }
+            ALLEGRO_LOCKED_REGION* locked_region = al_lock_bitmap(target_bmp, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE);
+
             for (int y = 0; y != app->tiles_height; y++)
 			{
                 for (int x = 0; x != app->tiles_width; x++)
@@ -173,19 +206,48 @@ void    TileViewer_Update(t_app_tile_viewer *app)
                         Decode_Tile (n);
                     if (dirty_all || tgfx.Tile_Dirty [n])
                     {
-                        VDP_Mode4_DrawTile(app->box->gfx_buffer, locked_region, nd, palette_host, tiles_frame_pos.x+(x * 8), tiles_frame_pos.y+(y * 8), 0);
+                        VDP_Mode4_DrawTile(target_bmp, locked_region, nd, palette_host, base_x + (x * 8), base_y + (y * 8), 0);
                         tgfx.Tile_Dirty [n] = 0;
                         dirty = TRUE;
                     }
                     if (n == tile_current)
 					{
                         tile_current_addr = vram_addr_min + (n * 32);
-						VDP_Mode4_DrawTile(app->box->gfx_buffer, locked_region, nd, palette_host, tile_selected_pos.x, tile_selected_pos.y, 0);
+                        if (!use_zoom)
+						    VDP_Mode4_DrawTile(target_bmp, locked_region, nd, palette_host, tile_selected_pos.x, tile_selected_pos.y, 0);
 					}
                     n ++;
                     nd += 64;
                 }
 			}
+            al_unlock_bitmap(target_bmp);
+
+            if (use_zoom)
+            {
+                al_set_target_bitmap(bmp);
+                al_draw_scaled_bitmap(app->tiles_temp_bitmap, 0, 0, app->tiles_unscaled_w, app->tiles_unscaled_h,
+                                      tiles_frame_pos.x, tiles_frame_pos.y,
+                                      (float)app->tiles_display_frame.size.x, (float)app->tiles_display_frame.size.y, 0);
+
+                if (tile_current != -1)
+                {
+                    ALLEGRO_BITMAP* sel_temp = al_create_bitmap(8, 8);
+                    ALLEGRO_LOCKED_REGION* sel_locked = al_lock_bitmap(sel_temp, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE);
+                    const u8* sel_nd = &tgfx.Tile_Decoded[tile_current][0];
+                    VDP_Mode4_DrawTile(sel_temp, sel_locked, sel_nd, palette_host, 0, 0, 0);
+                    al_unlock_bitmap(sel_temp);
+                    al_set_target_bitmap(bmp);
+                    al_draw_scaled_bitmap(sel_temp, 0, 0, 8, 8,
+                                          app->tile_selected_frame.pos.x, app->tile_selected_frame.pos.y,
+                                          (float)app->tile_selected_frame.size.x, (float)app->tile_selected_frame.size.y, 0);
+                    al_destroy_bitmap(sel_temp);
+                }
+                else
+                {
+                    al_draw_filled_rectangle(app->tile_selected_frame.pos.x+2, app->tile_selected_frame.pos.y+2,
+                                             app->tile_selected_frame.pos.x+2+8*z, app->tile_selected_frame.pos.y+2+8*z, COLOR_BLACK);
+                }
+            }
             break;
         }
     case VDP_TMS9918:
@@ -198,9 +260,20 @@ void    TileViewer_Update(t_app_tile_viewer *app)
 			const int fg_color = Palette_EmulationToHostGui[app->palette + 1];
             const int bg_color = Palette_EmulationToHostGui[(app->palette != 0) ? 1 : 15];
             const u8 * addr = VRAM + vram_addr_min;
-			//VRAM = g_machine.VDP.sg_pattern_gen_address;
-            // addr = &VRAM[apps.opt.Tiles_Base];
-           
+
+            ALLEGRO_BITMAP* target_bmp;
+            int base_x, base_y;
+            if (use_zoom) {
+                target_bmp = app->tiles_temp_bitmap;
+                base_x = 0;
+                base_y = 0;
+            } else {
+                target_bmp = bmp;
+                base_x = tiles_frame_pos.x;
+                base_y = tiles_frame_pos.y;
+            }
+            ALLEGRO_LOCKED_REGION* locked_region = al_lock_bitmap(target_bmp, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE);
+            
             int n = 0;
             for (int y = 0; y != app->tiles_height; y ++)
 			{
@@ -208,22 +281,51 @@ void    TileViewer_Update(t_app_tile_viewer *app)
                 {
                     if ((addr - VRAM) > 0x4000)
                         break;
-                    VDP_Mode0123_DrawTile(bmp, locked_region, tiles_frame_pos.x+(x * 8), tiles_frame_pos.y+(y * 8), addr, fg_color, bg_color);
+                    VDP_Mode0123_DrawTile(target_bmp, locked_region, base_x + (x * 8), base_y + (y * 8), addr, fg_color, bg_color);
                     if (n == tile_current)
 					{
                         tile_current_addr = vram_addr_min + (n * 8);
-						VDP_Mode0123_DrawTile(bmp, locked_region, tile_selected_pos.x, tile_selected_pos.y, addr, fg_color, bg_color);
+                        if (!use_zoom)
+						    VDP_Mode0123_DrawTile(target_bmp, locked_region, tile_selected_pos.x, tile_selected_pos.y, addr, fg_color, bg_color);
 					}
 
                     n++;
                     addr += 8;
                 }
 			}
+            al_unlock_bitmap(target_bmp);
+
+            if (use_zoom)
+            {
+                al_set_target_bitmap(bmp);
+                al_draw_scaled_bitmap(app->tiles_temp_bitmap, 0, 0, app->tiles_unscaled_w, app->tiles_unscaled_h,
+                                      tiles_frame_pos.x, tiles_frame_pos.y,
+                                      (float)app->tiles_display_frame.size.x, (float)app->tiles_display_frame.size.y, 0);
+
+                if (tile_current != -1)
+                {
+                    ALLEGRO_BITMAP* sel_temp = al_create_bitmap(8, 8);
+                    ALLEGRO_LOCKED_REGION* sel_locked = al_lock_bitmap(sel_temp, ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE);
+                    const u8* sel_addr = VRAM + vram_addr_min + (tile_current * 8);
+                    VDP_Mode0123_DrawTile(sel_temp, sel_locked, 0, 0, sel_addr, fg_color, bg_color);
+                    al_unlock_bitmap(sel_temp);
+                    al_set_target_bitmap(bmp);
+                    al_draw_scaled_bitmap(sel_temp, 0, 0, 8, 8,
+                                          app->tile_selected_frame.pos.x, app->tile_selected_frame.pos.y,
+                                          (float)app->tile_selected_frame.size.x, (float)app->tile_selected_frame.size.y, 0);
+                    al_destroy_bitmap(sel_temp);
+                }
+                else
+                {
+                    al_draw_filled_rectangle(app->tile_selected_frame.pos.x+2, app->tile_selected_frame.pos.y+2,
+                                             app->tile_selected_frame.pos.x+2+8*z, app->tile_selected_frame.pos.y+2+8*z, COLOR_BLACK);
+                }
+            }
+
             dirty = TRUE; // to be replaced later
             break;
         }
     }
-	al_unlock_bitmap(app->box->gfx_buffer);
 
 	// Refresh top status line (address range)
 	al_set_target_bitmap(bmp);
@@ -265,7 +367,7 @@ void    TileViewer_Update(t_app_tile_viewer *app)
         {
             // Fill tile with black
 			const t_frame* fr = &app->tile_selected_frame;
-            al_draw_filled_rectangle(fr->pos.x+2, fr->pos.y+2, fr->pos.x+2+8, fr->pos.y+2+8, COLOR_BLACK);
+            al_draw_filled_rectangle(fr->pos.x+2, fr->pos.y+2, fr->pos.x+2+fr->size.x, fr->pos.y+2+fr->size.y, COLOR_BLACK);
         }
     }
 
@@ -295,7 +397,13 @@ void        TileViewer_Configure_PaletteMax (int palette_max)
 void    TileViewer_SelectedTile_Select(t_widget *w)
 {
     if (w->mouse_action & WIDGET_MOUSE_ACTION_HOVER)
-        TileViewer.tile_selected = ((w->mouse_y / 8) * 16) + (w->mouse_x / 8);
+    {
+        const float z = TileViewer.zoom;
+        if (z <= 1.0f)
+            TileViewer.tile_selected = ((w->mouse_y / 8) * 16) + (w->mouse_x / 8);
+        else
+            TileViewer.tile_selected = ((int)(w->mouse_y / z / 8) * 16) + (int)(w->mouse_x / z / 8);
+    }
 }
 
 void    TileViewer_Switch()
