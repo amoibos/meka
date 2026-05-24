@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls *.sln)",
+      "Bash(ls /c/projekte/meka/meka/srcs/Makefile)",
+      "Bash(MSBuild.exe Meka.sln /p:Configuration=Debug /p:Platform=x64 /t:Build /m /nologo)",
+      "Bash(xargs -I{} basename {})",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

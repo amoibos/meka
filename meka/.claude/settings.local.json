@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\projekte\\\\meka\\\\meka\\\\srcs\" -File -Filter \"*.c\")",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(Get-ChildItem -Path \"c:\\\\projekte\\\\meka\\\\meka\\\\srcs\" -File -Filter \"*.h\")",
+      "Bash(git commit -m ' *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\projekte\\\\meka\\\\meka\" -Directory)",
+      "Bash(Select-Object -First 20)",
+      "WebFetch(domain:www.smspower.org)",
+      "Bash(cmake --build build)",
+      "Bash(MSBuild srcs/projects/msvc/Meka.sln /p:Configuration=Release /p:Platform=x64 /t:Build /m /nologo /v:minimal)"
+    ]
+  }
+}
