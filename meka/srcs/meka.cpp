@@ -20,6 +20,8 @@
 #include "capture.h"
 #include "config.h"
 #include "coleco.h"
+#include "dap_handler.h"
+#include "dap_server.h"
 #include "db.h"
 #include "debugger.h"
 #include "desktop.h"
@@ -140,6 +142,7 @@ static void Init_Default_Values()
 {
     g_env.debug_dump_infos = false;
     g_env.debug_script_filename = NULL;
+    g_env.dap_port = 0;
 
     // IPeriod
     opt.IPeriod = opt.Cur_IPeriod = 228;
@@ -444,6 +447,34 @@ int main(int argc, char **argv)
     }
     #endif
 
+    // Start DAP server if port was specified
+    if (g_env.dap_port > 0)
+    {
+        #ifdef MEKA_Z80_DEBUGGER
+        if (!Debugger.active)
+            Debugger_Switch();
+        #endif
+
+        DAP_Server& dap = g_dap_server();
+        dap.SetRequestHandler([](const std::string& cmd, int seq, const std::string& args) {
+            return DAP_Handler::ProcessRequest(cmd, seq, args);
+        });
+
+        // Register halt callback
+        Debugger_DAP_HaltCallback = []() {
+            g_dap_server().OnMachineHalted();
+        };
+
+        if (dap.Start(g_env.dap_port))
+        {
+            ConsolePrintf("DAP server started on port %d\n", g_env.dap_port);
+        }
+        else
+        {
+            ConsolePrintf("ERROR: Failed to start DAP server on port %d\n", g_env.dap_port);
+        }
+    }
+
     // Wait for Win32 console signal
     if (!ConsoleWaitForAnswer(true))
         return (0);
@@ -457,6 +488,11 @@ int main(int argc, char **argv)
 
     // Shutting down emulator...
     g_env.state = MEKA_STATE_SHUTDOWN;
+
+    // Stop DAP server
+    if (g_env.dap_port > 0)
+        g_dap_server().Stop();
+
     Video_Setup_State      (); // Switch back to text mode
     BMemory_Save           (); // Write Backed Memory if necessary
     Configuration_Save     (); // Write Configuration File

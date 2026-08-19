@@ -97,17 +97,14 @@ void        Load_Game_Fixup()
                 memcpy (RAM + i, RAM, 0x0400);
             break;
         case MAPPER_SG1000:
-            b = RAM[0x1FFD]; WrZ80_NoHook(0xFFFD, g_machine.mapper_regs[0]);     RAM[0x1FFD] = b;
-            b = RAM[0x1FFE]; WrZ80_NoHook(0xFFFE, g_machine.mapper_regs[1]);     RAM[0x1FFE] = b;
-            b = RAM[0x1FFF]; WrZ80_NoHook(0xFFFF, g_machine.mapper_regs[2]);     RAM[0x1FFF] = b;
-            memcpy (RAM + 0x1000, RAM, 0x1000);
-            break;
         case MAPPER_SD1000:
             // Restore ROM page mappings for frames 0-2. Don't replay 0xFFFC here:
             // the save state already contains the correct RAM content for 0xC000-0xFFFF.
-            b = RAM[0x1FFD]; WrZ80_NoHook(0xFFFD, g_machine.mapper_regs[0]);     RAM[0x1FFD] = b;
-            b = RAM[0x1FFE]; WrZ80_NoHook(0xFFFE, g_machine.mapper_regs[1]);     RAM[0x1FFE] = b;
-            b = RAM[0x1FFF]; WrZ80_NoHook(0xFFFF, g_machine.mapper_regs[2]);     RAM[0x1FFF] = b;
+            // 0xFFFD-0xFFFF live in RAM[0x3FFD-0x3FFF] (16KB unmirrored window), so
+            // preserve those cells across the replay.
+            b = RAM[0x3FFD]; WrZ80_NoHook(0xFFFD, g_machine.mapper_regs[0]);     RAM[0x3FFD] = b;
+            b = RAM[0x3FFE]; WrZ80_NoHook(0xFFFE, g_machine.mapper_regs[1]);     RAM[0x3FFE] = b;
+            b = RAM[0x3FFF]; WrZ80_NoHook(0xFFFF, g_machine.mapper_regs[2]);     RAM[0x3FFF] = b;
             break;
         case MAPPER_SF7000:
             SF7000_IPL_Mapping_Update();
@@ -323,10 +320,11 @@ int     Save_Game_MSV(FILE *f)
         fwrite (RAM, 0x00400, 1, f);
         break;
     case MAPPER_SG1000:
-        fwrite (RAM, 0x01000, 1, f);
+    case MAPPER_SD1000:
+        fwrite (RAM, 0x04000, 1, f);
         break;
     case MAPPER_TVOekaki:
-        fwrite (RAM, 0x01000, 1, f);
+        fwrite (RAM, 0x04000, 1, f);
         fwrite (&TVOekaki, sizeof (TVOekaki), 1, f);
         break;
     case MAPPER_SF7000:
@@ -489,13 +487,24 @@ int         Load_Game_MSV(FILE *f)
             fread (RAM, 0x02000, 1, f); // Previously saved 8 Kb instead of 1 kb
         break;
     case MAPPER_SG1000:
-        if (version >= 0x06)
-            fread (RAM, 0x01000, 1, f);
+        if (version >= 0x0F)
+            fread (RAM, 0x04000, 1, f);
+        else if (version >= 0x06)
+            fread (RAM, 0x01000, 1, f); // Previously saved 4 Kb instead of 16 Kb
         else
             fread (RAM, 0x02000, 1, f); // Previously saved 8 Kb instead of 4 Kb
         break;
+    case MAPPER_SD1000:
+        if (version >= 0x0F)
+            fread (RAM, 0x04000, 1, f);
+        else
+            fread (RAM, 0x02000, 1, f); // Previously saved 8 Kb instead of 16 Kb
+        break;
     case MAPPER_TVOekaki:
-        fread (RAM, 0x01000, 1, f);
+        if (version >= 0x0F)
+            fread (RAM, 0x04000, 1, f);
+        else
+            fread (RAM, 0x01000, 1, f); // Previously saved 4 Kb instead of 16 Kb
         fread (&TVOekaki, sizeof (TVOekaki), 1, f);
         break;
     case MAPPER_SF7000:

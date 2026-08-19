@@ -244,6 +244,8 @@
     <ClCompile Include="..\..\data.cpp" />
     <ClCompile Include="..\..\datadump.cpp" />
     <ClCompile Include="..\..\db.cpp" />
+    <ClCompile Include="..\..\dap_handler.cpp" />
+    <ClCompile Include="..\..\dap_server.cpp" />
     <ClCompile Include="..\..\debugger.cpp" />
     <ClCompile Include="..\..\desktop.cpp" />
     <ClCompile Include="..\..\drivers.cpp" />
@@ -271,6 +273,7 @@
     <ClCompile Include="..\..\inputs_c.cpp" />
     <ClCompile Include="..\..\inputs_f.cpp" />
     <ClCompile Include="..\..\inputs_i.cpp" />
+    <ClCompile Include="..\..\inputs_inject.cpp" />
     <ClCompile Include="..\..\inputs_t.cpp" />
     <ClCompile Include="..\..\inputs_u.cpp" />
     <ClCompile Include="..\..\ioports.cpp" />
@@ -368,6 +371,9 @@
     <ClInclude Include="..\..\data.h" />
     <ClInclude Include="..\..\datadump.h" />
     <ClInclude Include="..\..\db.h" />
+    <ClInclude Include="..\..\dap_json.h" />
+    <ClInclude Include="..\..\dap_handler.h" />
+    <ClInclude Include="..\..\dap_server.h" />
     <ClInclude Include="..\..\debugger.h" />
     <ClInclude Include="..\..\desktop.h" />
     <ClInclude Include="..\..\drivers.h" />
@@ -396,6 +402,7 @@
     <ClInclude Include="..\..\inputs_c.h" />
     <ClInclude Include="..\..\inputs_f.h" />
     <ClInclude Include="..\..\inputs_i.h" />
+    <ClInclude Include="..\..\inputs_inject.h" />
     <ClInclude Include="..\..\inputs_t.h" />
     <ClInclude Include="..\..\inputs_u.h" />
     <ClInclude Include="..\..\ioports.h" />

@@ -572,6 +572,22 @@ void    Machine_Set_Mapping()
         memcpy(Game_ROM_Computed_Page_0, ROM, 0x4000);
         break;
 
+    case MAPPER_SG1000:  // SG-1000/SC-3000: 16KB of unmirrored RAM at 0xC000-0xFFFF ------
+    case MAPPER_TVOekaki:
+        Map_8k_ROM(0, 0);
+        Map_8k_ROM(1, 1 & tsms.Pages_Mask_8k);
+        Map_8k_ROM(2, 2 & tsms.Pages_Mask_8k);
+        Map_8k_ROM(3, 3 & tsms.Pages_Mask_8k);
+        Map_8k_ROM(4, 4 & tsms.Pages_Mask_8k);
+        Map_8k_ROM(5, 5 & tsms.Pages_Mask_8k);
+        Map_8k_RAM(6, 0);   // 0xC000-0xDFFF -> RAM[0x0000-0x1FFF]
+        Map_8k_RAM(7, 1);   // 0xE000-0xFFFF -> RAM[0x2000-0x3FFF]
+        // mapper_regs_count/regs keep the defaults set above (3 registers: 0,1,2)
+        memcpy(Game_ROM_Computed_Page_0, ROM, 0x4000);
+        if (g_machine.mapper == MAPPER_TVOekaki)
+            TVOekaki_Init();
+        break;
+
     default: // Other mappers
         Map_8k_ROM(0, 0);
         Map_8k_ROM(1, 1);
@@ -596,9 +612,6 @@ void    Machine_Set_Mapping()
         case MAPPER_93c46:
             // RAM [0x1FFC] = 0; RAM [0x1FFD] = 0; RAM [0x1FFE] = 1; RAM [0x1FFF] = 2;
             EEPROM_93c46_Init(EEPROM_93C46_INIT_ALL);
-            break;
-        case MAPPER_TVOekaki:
-            TVOekaki_Init();
             break;
         case MAPPER_MSX_Generic16_8000:
             Map_16k_ROM(0, 0);
@@ -776,8 +789,19 @@ void        Machine_Reset()
     memset (PRAM, 0, 0x00040);      // Clear all PRAM (palette)
 
     #ifdef DEBUG_UNINITIALIZED_RAM_ACCESSES
-        memset (RAM_IsUninitialized, 1, 0x2000);
+        memset (RAM_IsUninitialized, 1, 0x4000);
     #endif
+
+    // Machine_Set_Mapping() (above) preloads the SD-1000's fixed 0xC000-0xFFFF
+    // window from the ROM image, but that happens before this unconditional
+    // RAM clear -- which wipes it straight back out. Redo it here so code
+    // linked into that "fixed" range (crt0 init, etc.) finds its own bytes
+    // instead of blank RAM right after reset.
+    if (g_machine.mapper == MAPPER_SD1000)
+    {
+        memcpy(RAM + 0x0000, ROM + (6 & tsms.Pages_Mask_8k) * 0x2000, 0x2000);
+        memcpy(RAM + 0x2000, ROM + (7 & tsms.Pages_Mask_8k) * 0x2000, 0x2000);
+    }
 
     // Unload BIOS if...
     if ((g_driver->id != DRV_SMS || sms.Country != COUNTRY_EXPORT) && (g_machine_flags & MACHINE_ROM_LOADED))

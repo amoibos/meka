@@ -20,7 +20,7 @@
 //-----------------------------------------------------------------------------
 
 #ifdef DEBUG_UNINITIALIZED_RAM_ACCESSES
-u8 RAM_IsUninitialized[0x2000];
+u8 RAM_IsUninitialized[0x4000];  // 16KB: enough for the SG-1000/SD-1000 RAM window
 #endif
 
 //-----------------------------------------------------------------------------
@@ -101,8 +101,8 @@ void    Mapper_Get_RAM_Infos(int *plen, int *pstart_addr)
     {
         case MAPPER_32kRAM:                         len = 0x08000; start_addr = 0x8000; break;
         case MAPPER_ColecoVision:                   len = 0x00400; start_addr = 0x6000; break;
-        case MAPPER_SG1000:                         len = 0x01000; start_addr = 0xC000; break;
-        case MAPPER_TVOekaki:                       len = 0x01000; start_addr = 0xC000; break;
+        case MAPPER_SG1000:                         len = 0x04000; start_addr = 0xC000; break;
+        case MAPPER_TVOekaki:                       len = 0x04000; start_addr = 0xC000; break;
         case MAPPER_SF7000:                         len = 0x10000; start_addr = 0x0000; break;
         case MAPPER_SMS_DisplayUnit:                len = 0x02800; start_addr = 0x4000; break; // FIXME: Incorrect, due to scattered mapping!
         case MAPPER_SG1000_Taiwan_MSX_Adapter_TypeA:len = 0x02000+0x800; start_addr = 0x2000; break; // FIXME: Two memory regions
@@ -311,7 +311,14 @@ WRITE_FUNC (Write_Mapper_SMS_NoMapper)
     Write_Error (Addr, Value);
 }
 
-// FIXME: Amount of RAM is totally incorrect.
+// [MAPPER: SG-1000] WRITE BYTE ------------------------------------------------
+// 16KB of unmirrored RAM at 0xC000-0xFFFF, backed by RAM[0x0000-0x3FFF].
+// Original SG-1000 hardware only decodes 1KB (SC-3000: 2KB) and mirrors it across
+// the whole window; MEKA models a RAM expansion so that homebrew targeting the full
+// 0xC000-0xFFFF window behaves as on such hardware.
+// The Sega-style bankswitch registers at 0xFFFD-0xFFFF are still intercepted (some
+// SG-1000 carts > 32KB use them), but the written value is also stored into RAM so
+// that reading those three cells back behaves like plain RAM.
 WRITE_FUNC (Write_Mapper_SG1000)
 {
     switch (Addr)
@@ -321,10 +328,11 @@ WRITE_FUNC (Write_Mapper_SG1000)
         if (Value != 0)
         { Msg(MSGT_DEBUG, "At PC=%04X: Frame 0 set to page %d !", CPU_GetPC, Value); }
 #endif
+        Mem_Pages [7] [Addr] = Value;
         Value &= tsms.Pages_Mask_16k;
         if (g_machine.mapper_regs[0] != Value)
         {
-            RAM [0x1FFD] = g_machine.mapper_regs[0] = Value;
+            g_machine.mapper_regs[0] = Value;
             if (Value != 0)
             {
                 Map_16k_Other (0, Game_ROM_Computed_Page_0);
@@ -341,7 +349,8 @@ WRITE_FUNC (Write_Mapper_SG1000)
         if (Value > tsms.Pages_Count_16k)
         { Msg(MSGT_DEBUG, "At PC=%04X: Frame 1 set to non-existent page: %d", CPU_GetPC, Value); }
 #endif
-        RAM [0x1FFE] = g_machine.mapper_regs[1] = Value & tsms.Pages_Mask_16k;
+        Mem_Pages [7] [Addr] = Value;
+        g_machine.mapper_regs[1] = Value & tsms.Pages_Mask_16k;
         Map_16k_ROM(2, g_machine.mapper_regs[1] * 2);
         return;
     case 0xFFFF: // Frame 2 ------------------------------------------------------
@@ -349,21 +358,22 @@ WRITE_FUNC (Write_Mapper_SG1000)
         if (Value > tsms.Pages_Count_16k)
         { Msg(MSGT_DEBUG, "At PC=%04X: Frame 2 set to non-existent page: %d", CPU_GetPC, Value); }
 #endif
-        RAM [0x1FFF] = g_machine.mapper_regs[2] = Value & tsms.Pages_Mask_16k;
+        Mem_Pages [7] [Addr] = Value;
+        g_machine.mapper_regs[2] = Value & tsms.Pages_Mask_16k;
         Map_16k_ROM (4, g_machine.mapper_regs[2] * 2);
         return;
     }
 
 #ifdef DEBUG_UNINITIALIZED_RAM_ACCESSES
     if (Addr >= 0xC000 && Addr <= 0xFFFF)
-        RAM_IsUninitialized[Addr&0x1FFF] = 0;
+        RAM_IsUninitialized[Addr&0x3FFF] = 0;
 #endif
 
+    // RAM at 0xC000-0xFFFF (16KB, no mirroring) ------------------------------
     switch (Addr >> 13)
     {
-        // RAM [0xC000] = [0xE000] -----------------------------------------------
-    case 6: Mem_Pages [6] [Addr & ~0x1000] = Mem_Pages [6] [Addr | 0x1000] = Value; return;
-    case 7: Mem_Pages [7] [Addr & ~0x1000] = Mem_Pages [7] [Addr | 0x1000] = Value; return;
+    case 6: Mem_Pages [6] [Addr] = Value; return;
+    case 7: Mem_Pages [7] [Addr] = Value; return;
     }
 
     Write_Error (Addr, Value);
@@ -398,10 +408,11 @@ WRITE_FUNC (Write_Mapper_SD1000)
         if (Value != 0)
         { Msg(MSGT_DEBUG, "At PC=%04X: Frame 0 set to page %d !", CPU_GetPC, Value); }
 #endif
+        Mem_Pages[7][Addr] = Value;
         Value &= tsms.Pages_Mask_16k;
         if (g_machine.mapper_regs[0] != Value)
         {
-            RAM[0x1FFD] = g_machine.mapper_regs[0] = Value;
+            g_machine.mapper_regs[0] = Value;
             if (Value != 0)
             {
                 Map_16k_Other(0, Game_ROM_Computed_Page_0);
@@ -418,7 +429,8 @@ WRITE_FUNC (Write_Mapper_SD1000)
         if (Value > tsms.Pages_Count_16k)
         { Msg(MSGT_DEBUG, "At PC=%04X: Frame 1 set to non-existent page: %d", CPU_GetPC, Value); }
 #endif
-        RAM[0x1FFE] = g_machine.mapper_regs[1] = Value & tsms.Pages_Mask_16k;
+        Mem_Pages[7][Addr] = Value;
+        g_machine.mapper_regs[1] = Value & tsms.Pages_Mask_16k;
         Map_16k_ROM(2, g_machine.mapper_regs[1] * 2);
         return;
     case 0xFFFF: // Frame 2 (0x8000-0xBFFF) ------------------------------------
@@ -426,7 +438,8 @@ WRITE_FUNC (Write_Mapper_SD1000)
         if (Value > tsms.Pages_Count_16k)
         { Msg(MSGT_DEBUG, "At PC=%04X: Frame 2 set to non-existent page: %d", CPU_GetPC, Value); }
 #endif
-        RAM[0x1FFF] = g_machine.mapper_regs[2] = Value & tsms.Pages_Mask_16k;
+        Mem_Pages[7][Addr] = Value;
+        g_machine.mapper_regs[2] = Value & tsms.Pages_Mask_16k;
         Map_16k_ROM(4, g_machine.mapper_regs[2] * 2);
         return;
     }
@@ -1377,7 +1390,10 @@ READ_FUNC (Read_Default)
     #ifdef DEBUG_UNINITIALIZED_RAM_ACCESSES
     if (Addr >= 0xC000 && Addr <= 0xFFFF)
     {
-        if (RAM_IsUninitialized[Addr&0x1FFF])
+        // Index by the actual RAM offset: the window is 8KB mirrored twice on SMS/GG,
+        // but a flat 16KB on SG-1000/SD-1000.
+        const size_t ram_offset = (size_t)(Mem_Pages[Addr >> 13] + Addr - RAM);
+        if (ram_offset < sizeof(RAM_IsUninitialized) && RAM_IsUninitialized[ram_offset])
         {
             Msg(MSGT_DEBUG, "At PC=$%04x, Read uninitialized RAM[$%04x]", sms.R.PC.W, Addr);
             //sms.R.Trace = 1;

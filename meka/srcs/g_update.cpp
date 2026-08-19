@@ -17,6 +17,7 @@
 #include "app_tileview.h"
 #include "app_options.h"
 #include "debugger.h"
+#include "dap_server.h"
 #include "g_widget.h"
 #include "inputs_t.h"
 #include "skin_fx.h"
@@ -71,6 +72,8 @@ void    gui_update_applets()
     #ifdef MEKA_Z80_DEBUGGER
         Debugger_Update();
     #endif
+
+    g_dap_server().Update();
 }
 
 void    gui_update_applets_after_redraw()

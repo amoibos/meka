@@ -400,6 +400,7 @@ void    Command_Line_Parse()
         "SETUP",
         "DEBUG_INFOS",
         "DEBUG_SCRIPT",
+        "DAP_PORT",
         NULL
     };
 
@@ -444,6 +445,10 @@ void    Command_Line_Parse()
                 Param_Check(&i, "-DEBUG_SCRIPT requires a filename parameter");
                 g_env.debug_script_filename = strdup(g_env.argv[i]);
                 break;
+            case 8: // DAP_PORT
+                Param_Check(&i, "-DAP_PORT requires a port number parameter");
+                g_env.dap_port = atoi(g_env.argv[i]);
+                break;
             default:
                 ConsolePrintf(Msg_Get(MSG_Error_Param), s);
                 ConsolePrint("\n--\n");
@@ -483,7 +488,8 @@ void    Command_Line_Help()
         "  -LOAD <n>        : Load savestate <n> on startup"                 "\n" \
         "  -LOG <file>      : Log message to file <file> (appending it)"     "\n" \
         "  -NOELEPHANT      : Just what it says"                             "\n" \
-        "  -DEBUG_SCRIPT <f>: Run debugger commands from file <f> on startup" "\n"
+        "  -DEBUG_SCRIPT <f>: Run debugger commands from file <f> on startup" "\n" \
+        "  -DAP_PORT <port> : Start DAP (Debug Adapter Protocol) server on port" "\n"
         );
     //   "  -NIRV            : Speed up emulation dramatically"          "\n"
 }

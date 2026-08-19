@@ -6,6 +6,7 @@
 #include "shared.h"
 #include "g_tools.h"
 #include "g_widget.h"
+#include "debugger.h"
 #include "inputs_t.h"
 #include "keyinfo.h"
 
@@ -955,6 +956,11 @@ void        widget_inputbox_update(t_widget *w)
         return;
     }
     wd->cursor_blink_timer = (wd->cursor_blink_timer + 1) % 70;
+
+#ifdef MEKA_Z80_DEBUGGER
+    if (Debugger_WidgetIgnoresKeyboard(w))
+        return;
+#endif
 
     // Msg(MSGT_DEBUG, "cascii = %c, cscan = %04x", Inputs.KeyPressed.ascii, Inputs.KeyPressed.scancode);
 

@@ -46,6 +46,8 @@
     #define ALLEGRO_BITMAP WINDOWS_BITMAP
     #define NOMINMAX
     #define WIN32_LEAN_AND_MEAN
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
     #include <windows.h>
     #include <crtdbg.h>
     #undef ALLEGRO_BITMAP

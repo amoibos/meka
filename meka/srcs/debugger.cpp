@@ -34,6 +34,11 @@
 t_debugger      Debugger;
 
 //-----------------------------------------------------------------------------
+// DAP integration callback - called when machine halts at breakpoint/step
+//-----------------------------------------------------------------------------
+void (*Debugger_DAP_HaltCallback)() = nullptr;
+
+//-----------------------------------------------------------------------------
 // External declaration
 //-----------------------------------------------------------------------------
 
@@ -51,14 +56,14 @@ static void     Debugger_Applet_UpdateShortcuts();
 
 // Misc
 static void     Debugger_Help(const char *cmd);
-static void     Debugger_SetTrap(int trap);
+void            Debugger_SetTrap(int trap);
 static void     Debugger_InputBoxCallback(t_widget *w);
 static bool     Debugger_CompletionCallback(t_widget *w);
 
 // Evaluator
 static int      Debugger_Eval_GetValue(char **src, t_debugger_value *result);
 bool            Debugger_Eval_ParseConstant(const char *value, t_debugger_value *result, t_debugger_eval_value_format default_format);
-static int      Debugger_Eval_ParseExpression(char **expr, t_debugger_value *result);
+int             Debugger_Eval_ParseExpression(char **expr, t_debugger_value *result);
 static bool     Debugger_Eval_ParseVariable(int variable_replacement_flags, const char *var, t_debugger_value *result);
 
 static void     Debugger_GetAccessString(int access, char buf[5])
@@ -84,19 +89,19 @@ static void                     Debugger_OutZ80_Hook(register u16 addr, register
 static u8                       Debugger_InZ80_Hook(register u16 addr);
 
 // Breakpoints
-static void                     Debugger_BreakPoints_List();
-static void                     Debugger_BreakPoints_Clear(bool disabled_only);
-//static void                   Debugger_BreakPoints_RefreshCpuExecTraps();
-static int                      Debugger_BreakPoints_AllocateId();
-static t_debugger_breakpoint *  Debugger_BreakPoints_SearchById(int id);
+void                     Debugger_BreakPoints_List();
+void                     Debugger_BreakPoints_Clear(bool disabled_only);
+//void                   Debugger_BreakPoints_RefreshCpuExecTraps();
+int                      Debugger_BreakPoints_AllocateId();
+t_debugger_breakpoint *  Debugger_BreakPoints_SearchById(int id);
 
 // Breakpoint
-static t_debugger_breakpoint *  Debugger_BreakPoint_Add(int type, int location, int access_flags, int address_start, int address_end, int auto_delete, const char *desc);
-static void                     Debugger_BreakPoint_Remove(t_debugger_breakpoint *breakpoint);
-static void                     Debugger_BreakPoint_Enable(t_debugger_breakpoint *breakpoint);
-static void                     Debugger_BreakPoint_Disable(t_debugger_breakpoint *breakpoint);
-static void                     Debugger_BreakPoint_SetDataCompare(t_debugger_breakpoint *breakpoint, int data_compare_length, u8 data_compare_bytes[8]);
-static void                     Debugger_BreakPoint_GetSummaryLine(t_debugger_breakpoint *breakpoint, char *buf);
+t_debugger_breakpoint *  Debugger_BreakPoint_Add(int type, int location, int access_flags, int address_start, int address_end, int auto_delete, const char *desc);
+void                     Debugger_BreakPoint_Remove(t_debugger_breakpoint *breakpoint);
+static void              Debugger_BreakPoint_Enable(t_debugger_breakpoint *breakpoint);
+static void              Debugger_BreakPoint_Disable(t_debugger_breakpoint *breakpoint);
+static void              Debugger_BreakPoint_SetDataCompare(t_debugger_breakpoint *breakpoint, int data_compare_length, u8 data_compare_bytes[8]);
+static void              Debugger_BreakPoint_GetSummaryLine(t_debugger_breakpoint *breakpoint, char *buf);
 static const char *             Debugger_BreakPoint_GetTypeName(t_debugger_breakpoint *breakpoint);
 static bool                     Debugger_BreakPoint_ActivatedVerbose(t_debugger_breakpoint *breakpoint, int access, int addr, int value);
 
@@ -493,6 +498,7 @@ void        Debugger_Init_Values()
 
     Debugger.script_commands.clear();
     Debugger.script_command_index = 0;
+    Debugger.keycodes_enabled = true;
 
     // Add Z80 CPU registers variables
     Debugger.variables_cpu_registers = NULL;
@@ -764,6 +770,10 @@ int     Debugger_Hook(Z80 *R)
 
     // Set machine in debugging mode (halted)
     Machine_Debug_Start();
+
+    // Notify DAP server
+    if (Debugger_DAP_HaltCallback)
+        Debugger_DAP_HaltCallback();
 
     // Ask Z80 emulator to stop now
     return (0);
@@ -1863,6 +1873,38 @@ void            Debugger_WrPRAM_Hook(register int addr, register u8 value)
             Debugger_BreakPoint_ActivatedVerbose(breakpoint, BREAKPOINT_ACCESS_W, addr, value);
         }
     }
+}
+
+// Enable or disable debugger keyboard capture (command line, exclusive focus).
+void    Debugger_Keycodes_SetEnabled(bool enabled)
+{
+    Debugger.keycodes_enabled = enabled;
+    if (DebuggerApp.box)
+    {
+        if (enabled)
+            DebuggerApp.box->flags |= GUI_BOX_FLAGS_FOCUS_INPUTS_EXCLUSIVE;
+        else
+            DebuggerApp.box->flags &= ~GUI_BOX_FLAGS_FOCUS_INPUTS_EXCLUSIVE;
+    }
+}
+
+bool    Debugger_Keycodes_IsEnabled()
+{
+    return Debugger.keycodes_enabled;
+}
+
+bool    Debugger_ShouldBlockEmulationInputs(t_gui_box* focused_box)
+{
+    if (!focused_box || !(focused_box->flags & GUI_BOX_FLAGS_FOCUS_INPUTS_EXCLUSIVE))
+        return false;
+    if (Debugger.active && !Debugger.keycodes_enabled && focused_box == DebuggerApp.box)
+        return false;
+    return true;
+}
+
+bool    Debugger_WidgetIgnoresKeyboard(t_widget* widget)
+{
+    return Debugger.active && !Debugger.keycodes_enabled && widget == DebuggerApp.input_box;
 }
 
 // Enable or disable the debugger window and associated processing.
@@ -4022,11 +4064,73 @@ int    Debugger_Eval_GetValue(char **src_result, t_debugger_value *result)
         return (expr_error);
     }
 
+    // @(addr) or @@(addr) — read byte from memory
+    if (*src == '@')
+    {
+        src++;
+        if (*src == '@') src++;  // allow @@(addr) as alias
+        parse_skip_spaces(&src);
+        if (*src != '(')
+        {
+            Debugger_Printf("Syntax Error - Expected '(' after '@'!\n");
+            return (-1);
+        }
+        src++;
+        t_debugger_value addr_val;
+        expr_error = Debugger_Eval_ParseExpression(&src, &addr_val);
+        if (expr_error <= 0)
+            return (expr_error);
+        if (*src != ')')
+        {
+            Debugger_Printf("Syntax Error - Missing closing parenthesis after '@'!\n");
+            return (-1);
+        }
+        src++;
+        Debugger_Value_SetComputed(result, RdZ80_NoHook((u16)addr_val.data), 1);
+        *src_result = src;
+        return (1);
+    }
+
     // Get token
     if (!parse_getword(token_buf, sizeof(token_buf), &src, " \t\n+-*/&|^(),.", 0, PARSE_FLAGS_DONT_EAT_SEPARATORS))
         return (0);
     if (token[0] == '\0')
         return (0);
+
+    // word @(addr) — read 16-bit little-endian word from memory
+    if (strcmp(token, "word") == 0)
+    {
+        parse_skip_spaces(&src);
+        if (*src != '@')
+        {
+            Debugger_Printf("Syntax Error - 'word' expects '@(addr)'!\n");
+            return (-1);
+        }
+        src++;
+        if (*src == '@') src++;  // allow word @@(addr)
+        parse_skip_spaces(&src);
+        if (*src != '(')
+        {
+            Debugger_Printf("Syntax Error - Expected '(' after 'word @'!\n");
+            return (-1);
+        }
+        src++;
+        t_debugger_value addr_val;
+        expr_error = Debugger_Eval_ParseExpression(&src, &addr_val);
+        if (expr_error <= 0)
+            return (expr_error);
+        if (*src != ')')
+        {
+            Debugger_Printf("Syntax Error - Missing closing parenthesis after 'word @'!\n");
+            return (-1);
+        }
+        src++;
+        u16 word_val = (u16)RdZ80_NoHook((u16)addr_val.data)
+                     | ((u16)RdZ80_NoHook((u16)(addr_val.data + 1)) << 8);
+        Debugger_Value_SetComputed(result, word_val, 2);
+        *src_result = src;
+        return (1);
+    }
 
     // Attempt to see if it's a variable
     if (Debugger_Eval_ParseVariable(DEBUGGER_VARIABLE_REPLACEMENT_ALL, token, result))

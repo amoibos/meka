@@ -180,6 +180,9 @@
     <ClCompile Include="..\..\inputs_i.cpp">
       <Filter>Srcs</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\inputs_inject.cpp">
+      <Filter>inputs</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\inputs_t.cpp">
       <Filter>Srcs</Filter>
     </ClCompile>
@@ -441,6 +444,12 @@
     <ClCompile Include="..\..\datadump.cpp">
       <Filter>Srcs\Debugger</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\dap_handler.cpp">
+      <Filter>Srcs\Debugger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\dap_server.cpp">
+      <Filter>Srcs\Debugger</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\debugger.cpp">
       <Filter>Srcs\Debugger</Filter>
     </ClCompile>
@@ -511,6 +520,9 @@
     </ClInclude>
     <ClInclude Include="..\..\inputs_i.h">
       <Filter>Srcs</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\inputs_inject.h">
+      <Filter>inputs</Filter>
     </ClInclude>
     <ClInclude Include="..\..\inputs_t.h">
       <Filter>Srcs</Filter>
@@ -795,6 +807,15 @@
       <Filter>Srcs\Applets</Filter>
     </ClInclude>
     <ClInclude Include="..\..\datadump.h">
+      <Filter>Srcs\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dap_json.h">
+      <Filter>Srcs\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dap_handler.h">
+      <Filter>Srcs\Debugger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\dap_server.h">
       <Filter>Srcs\Debugger</Filter>
     </ClInclude>
     <ClInclude Include="..\..\debugger.h">

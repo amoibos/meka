@@ -97,11 +97,11 @@ WRITE_FUNC (Write_Mapper_TVOekaki)
    case 0xA000:
         break;
    }
+ // RAM at 0xC000-0xFFFF (16KB, no mirroring) ------------------------------
  switch (Addr >> 13)
    {
-   // RAM [0xC000] = [0xE000] -----------------------------------------------
-   case 6: Mem_Pages [6] [Addr & 0xEFFF] = Mem_Pages [6] [Addr | 0x1000] = Value; return;
-   case 7: Mem_Pages [7] [Addr & 0xEFFF] = Mem_Pages [7] [Addr | 0x1000] = Value; return;
+   case 6: Mem_Pages [6] [Addr] = Value; return;
+   case 7: Mem_Pages [7] [Addr] = Value; return;
    }
 
  Write_Error (Addr, Value);

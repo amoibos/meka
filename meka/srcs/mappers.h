@@ -27,7 +27,7 @@
 #define MAPPER_ColecoVision                     (2)
 #define MAPPER_CodeMasters                      (3)
 #define MAPPER_93c46                            (4)
-#define MAPPER_SG1000                           (5)         // FIXME: Emulating 4KB RAM when it should be 2KB !#@?
+#define MAPPER_SG1000                           (5)         // 16KB of unmirrored RAM at 0xC000-0xFFFF (stock hardware only has 1KB on SG-1000 / 2KB on SC-3000, mirrored; we model a RAM expansion)
 #define MAPPER_SMS_ActionReplay                 (6)
 #define MAPPER_TVOekaki                         (7)
 #define MAPPER_SF7000                           (8)
@@ -117,7 +117,7 @@ extern void Map_16k_Other (int page, void *);
 //-----------------------------------------------------------------------------
 
 #ifdef DEBUG_UNINITIALIZED_RAM_ACCESSES
-extern u8 RAM_IsUninitialized[0x2000];
+extern u8 RAM_IsUninitialized[0x4000];
 #endif
 
 //-----------------------------------------------------------------------------

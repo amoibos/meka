@@ -8,6 +8,9 @@
 #include "sk1100.h"
 #include "skin_bg.h"
 
+#include <mutex>
+#include <vector>
+
 //-----------------------------------------------------------------------------
 // Data
 //-----------------------------------------------------------------------------
@@ -194,6 +197,81 @@ static  t_sk1100_map SK1100_Mapping [SK1100_MAPPING_NUM] =
 };
 
 //-----------------------------------------------------------------------------
+// Direct matrix injection (persists across SK1100_Clear; no Allegro / focus)
+//-----------------------------------------------------------------------------
+
+static std::mutex                       g_sk1100_inject_mutex;
+static u16                              g_sk1100_inject_pressed[8];
+static std::vector<std::pair<int, double>> g_sk1100_inject_releases;
+
+static void sk1100_inject_apply_pressed();
+static void sk1100_inject_process_releases();
+static void sk1100_inject_matrix_bit(int row, int bit, bool down);
+void SK1100_InjectAllegroKey(int allegro_key, bool down);
+
+static void sk1100_inject_apply_pressed()
+{
+    for (int row = 0; row < 8; row++)
+        tsms.Control[row] &= ~g_sk1100_inject_pressed[row];
+}
+
+static void sk1100_inject_process_releases()
+{
+    std::vector<std::pair<int, bool>> releases;
+
+    {
+        std::lock_guard<std::mutex> lock(g_sk1100_inject_mutex);
+        const double now = al_get_time();
+        for (size_t i = 0; i < g_sk1100_inject_releases.size(); )
+        {
+            if (now >= g_sk1100_inject_releases[i].second)
+            {
+                releases.push_back({ g_sk1100_inject_releases[i].first, false });
+                g_sk1100_inject_releases.erase(g_sk1100_inject_releases.begin() + i);
+            }
+            else
+                i++;
+        }
+    }
+
+    for (const auto& ev : releases)
+        SK1100_InjectAllegroKey(ev.first, ev.second);
+}
+
+static void sk1100_inject_matrix_bit(int row, int bit, bool down)
+{
+    if (row < 0 || row > 7 || bit == 0)
+        return;
+    std::lock_guard<std::mutex> lock(g_sk1100_inject_mutex);
+    if (down)
+        g_sk1100_inject_pressed[row] |= (u16)bit;
+    else
+        g_sk1100_inject_pressed[row] &= (u16)~bit;
+}
+
+void SK1100_InjectAllegroKey(int allegro_key, bool down)
+{
+    for (int i = 0; i != SK1100_MAPPING_NUM; i++)
+    {
+        const t_sk1100_map* k = &SK1100_Mapping[i];
+        if (k->key_pc != allegro_key)
+            continue;
+        const t_sk1100_key* sk = &SK1100_Keys[k->key_sk1100];
+        sk1100_inject_matrix_bit(sk->row, sk->bit, down);
+        return;
+    }
+}
+
+void SK1100_InjectAllegroKeyPress(int allegro_key, int duration_ms)
+{
+    if (duration_ms < 1)
+        duration_ms = 1;
+    SK1100_InjectAllegroKey(allegro_key, true);
+    std::lock_guard<std::mutex> lock(g_sk1100_inject_mutex);
+    g_sk1100_inject_releases.push_back({ allegro_key, al_get_time() + duration_ms / 1000.0 });
+}
+
+//-----------------------------------------------------------------------------
 // Functions
 //-----------------------------------------------------------------------------
 
@@ -221,6 +299,8 @@ void    SK1100_Clear()
 // Update SK-1100 data for emulation
 void    SK1100_Update()
 {
+    sk1100_inject_process_releases();
+
     int i;
     SK1100_Clear();
     for (i = 0; i != SK1100_MAPPING_NUM; i ++)
@@ -235,6 +315,8 @@ void    SK1100_Update()
                 Msg(MSGT_USER, "SK-1100: %s", sk1100_key->desc);
         }
     }
+
+    sk1100_inject_apply_pressed();
 }
 
 //-----------------------------------------------------------------------------

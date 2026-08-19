@@ -263,7 +263,7 @@ DEFINES = $(DEF_OS)
 #-----------------------------------------------------
 # Option : Debugger
 #-----------------------------------------------------
-OBJ_CPU += $(OD)/debug.o $(OD)/debugger.o $(OD)/debughelper.o $(OD)/datadump.o
+OBJ_CPU += $(OD)/dap_handler.o $(OD)/dap_server.o $(OD)/debug.o $(OD)/debugger.o $(OD)/debughelper.o $(OD)/datadump.o
 
 #-----------------------------------------------------
 # Compiler Flags

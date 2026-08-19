@@ -5,7 +5,9 @@
 
 #include "shared.h"
 #include "app_game.h"
+#include "debugger.h"
 #include "inputs_t.h"
+#include "inputs_inject.h"
 #include "lightgun.h"
 #include "periph.h"
 #include "rapidfir.h"
@@ -113,7 +115,7 @@ void    Inputs_Emulation_Update(bool running)
     // and I use an easy path.
     if (g_env.state == MEKA_STATE_GUI && !(g_machine_flags & MACHINE_PAUSED))
     {
-        if (gui.boxes_z_ordered[0] && (gui.boxes_z_ordered[0]->flags & GUI_BOX_FLAGS_FOCUS_INPUTS_EXCLUSIVE) != 0)
+        if (gui.boxes_z_ordered[0] && Debugger_ShouldBlockEmulationInputs(gui.boxes_z_ordered[0]))
         {
             // Returning from the emulation inputs update requires to take care of a few variables...
             if (tsms.Control_Start_Pause == 1) // Leave it if it is == 2
@@ -305,6 +307,8 @@ void    Inputs_Emulation_Update(bool running)
 // Read and update all inputs sources
 void    Inputs_Sources_Update()
 {
+    Inputs_InjectProcess();
+
     float dt = 1.0f/60.0f;      // FIXME: Delta time
 
     for (int i = 0; i < ALLEGRO_KEY_MAX; i++)

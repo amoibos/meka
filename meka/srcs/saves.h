@@ -7,7 +7,7 @@
 // Definitions
 //-----------------------------------------------------------------------------
 
-#define MEKA_SAVESTATE_VERSION (0x0E)
+#define MEKA_SAVESTATE_VERSION (0x0F)
 
 // 0x06 -> 0x07
 // - sms.SRAM_Pages is multiplied by two
@@ -39,6 +39,12 @@
 // 0x0D -> 0x0E
 // - added 4th mapper register *only if needed* (by some Korean mappers)
 //   so that import code in other emulator won't break for most games
+
+// 0x0E -> 0x0F
+// - SG-1000/TV Oekaki now emulate 16KB of unmirrored RAM at 0xC000-0xFFFF
+//   instead of 4KB mirrored 4 times, so 0x4000 bytes are saved instead of 0x1000.
+// - SD-1000 now saves its full 16KB of RAM (it previously fell through to the
+//   default case and only saved the lower 8KB).
 
 //-----------------------------------------------------------------------------
 // Functions

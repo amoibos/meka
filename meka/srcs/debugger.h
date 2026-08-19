@@ -166,6 +166,8 @@ struct t_debugger
     // Debug script
     std::vector<std::string>    script_commands;
     size_t                      script_command_index;
+
+    bool                        keycodes_enabled;               // When false, debugger UI does not capture keyboard
 };
 
 extern t_debugger   Debugger;
@@ -186,8 +188,13 @@ void                        Debugger_Enable(void);
 void                        Debugger_Update(void);
 void                        Debugger_Switch(void);
 void                        Debugger_Printf(const char *format, ...);
+void                        Debugger_SetTrap(int trap);
 void                        Debugger_InputParseCommand(char* line);
 void                        Debugger_Script_Load(const char* filename);
+void                        Debugger_Keycodes_SetEnabled(bool enabled);
+bool                        Debugger_Keycodes_IsEnabled();
+bool                        Debugger_ShouldBlockEmulationInputs(t_gui_box* focused_box);
+bool                        Debugger_WidgetIgnoresKeyboard(t_widget* widget);
 
 // Symbols
 bool                        Debugger_Symbols_Load();
@@ -208,6 +215,17 @@ int                         Debugger_Eval_ParseIntegerHex(const char* s, const c
 
 // Bus Data Access Helpers
 int                         Debugger_Bus_Read(int bus, int addr);
+
+// Breakpoint management (for DAP)
+t_debugger_breakpoint *     Debugger_BreakPoint_Add(int type, int location, int access_flags, int address_start, int address_end, int auto_delete, const char *desc);
+void                        Debugger_BreakPoint_Remove(t_debugger_breakpoint *breakpoint);
+void                        Debugger_BreakPoints_Clear(bool disabled_only);
+
+// Expression evaluation (for DAP)
+int                         Debugger_Eval_ParseExpression(char **expr, t_debugger_value *result);
+
+// DAP integration
+extern void (*Debugger_DAP_HaltCallback)();
 
 //-----------------------------------------------------------------------------
 

@@ -243,6 +243,7 @@ struct t_meka_env
     t_meka_state        state;
     bool                debug_dump_infos;
     char*               debug_script_filename;
+    int                 dap_port;                       // DAP server port (0 = disabled)
 };
 
 extern t_meka_env  g_env;
